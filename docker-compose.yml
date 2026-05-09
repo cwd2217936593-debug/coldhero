@@ -1,0 +1,104 @@
+version: "3.9"
+
+# =============================================================
+# 冷库智能监管平台 - 一键启动编排
+# 包含：MySQL 8 / Redis 7 / Node 后端 / React 前端（占位，后续模块加入）
+# =============================================================
+
+services:
+  # ------------------ MySQL 主库 ------------------
+  mysql:
+    image: mysql:8.0
+    container_name: coldhero-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_pwd}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-coldhero}
+      MYSQL_USER: ${MYSQL_USER:-coldhero}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-coldhero_pwd}
+      TZ: Asia/Shanghai
+    command:
+      - --default-authentication-plugin=caching_sha2_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+08:00
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # 启动时自动执行 init SQL（建表 + 种子数据）
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-root_pwd}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - coldhero-net
+
+  # ------------------ Redis 缓存 / 限流 ------------------
+  redis:
+    image: redis:7-alpine
+    container_name: coldhero-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - coldhero-net
+
+  # ------------------ Node.js 后端 ------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: coldhero-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      MYSQL_HOST: mysql
+      REDIS_HOST: redis
+    ports:
+      - "${APP_PORT:-4000}:4000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/storage:/app/storage
+      - ./backend/storage/forecasts:/app/storage/forecasts
+      - ./backend/storage/uploads:/app/storage/uploads
+      - ./backend/storage/fonts:/app/storage/fonts
+    networks:
+      - coldhero-net
+
+  # ------------------ React 前端 ------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: coldhero-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - coldhero-net
+
+networks:
+  coldhero-net:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  redis_data:
