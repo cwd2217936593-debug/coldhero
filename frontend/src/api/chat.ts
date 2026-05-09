@@ -1,4 +1,5 @@
 import { api } from "@/api/client";
+import { getExternalApiOrigin, shouldChatStreamHitRealBackend } from "@/lib/deepseekBridge";
 import { useAuthStore } from "@/store/authStore";
 import type { ApiResp, ChatLog, SessionSummary } from "@/api/types";
 
@@ -31,9 +32,17 @@ export interface AskOptions {
 /**
  * 流式问答（手写 fetch + ReadableStream，自带 token；不依赖 EventSource）
  */
+function chatStreamEndpoint(): string {
+  if (shouldChatStreamHitRealBackend()) {
+    const o = getExternalApiOrigin()!;
+    return `${o}/api/chat/messages/stream`;
+  }
+  return "/api/chat/messages/stream";
+}
+
 export async function askStream(opts: AskOptions): Promise<void> {
   const token = useAuthStore.getState().token;
-  const res = await fetch("/api/chat/messages/stream", {
+  const res = await fetch(chatStreamEndpoint(), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -52,7 +61,7 @@ export async function askStream(opts: AskOptions): Promise<void> {
     let msg = text;
     try {
       msg = JSON.parse(text)?.message ?? text;
-    } catch {/*ignore*/}
+    } catch {/* ignore */}
     opts.onError?.(msg || `HTTP ${res.status}`);
     return;
   }
@@ -80,7 +89,7 @@ export async function askStream(opts: AskOptions): Promise<void> {
         else if (obj.type === "delta") opts.onDelta(obj.delta ?? "");
         else if (obj.type === "end") opts.onEnd?.(obj);
         else if (obj.type === "error") opts.onError?.(obj.message ?? "stream_failed");
-      } catch {/*ignore parse error*/}
+      } catch {/* ignore parse error */}
     }
   }
 }

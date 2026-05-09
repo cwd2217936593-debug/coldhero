@@ -14,6 +14,7 @@
 
 import { v4 as uuidv4 } from "uuid";
 import type { MemberLevel } from "@/config/memberPlans";
+import type { UserRole } from "@/modules/users/users.repository";
 import { logger } from "@/utils/logger";
 import { quotaService } from "@/modules/quota/quota.service";
 import { chatRepo } from "@/modules/chat/chat.repository";
@@ -23,9 +24,10 @@ import { buildSystemPromptForUser } from "@/services/coldStoragePrompt";
 const HISTORY_TURNS = 10;
 const HISTORY_TRUNCATE = 800;
 
-function resolveTier(requested: AiTier | undefined, level: MemberLevel): AiTier {
+function resolveTier(requested: AiTier | undefined, level: MemberLevel, role?: UserRole): AiTier {
   if (requested !== "pro") return "fast";
-  // pro 模型仅 pro / enterprise 可用，其它套餐降级
+  // 管理员始终可用 pro（推理）模型；其它账号按会员等级
+  if (role === "admin") return "pro";
   return level === "pro" || level === "enterprise" ? "pro" : "fast";
 }
 
@@ -55,6 +57,7 @@ function truncate(s: string, max: number): string {
 export interface AskContext {
   userId: number;
   memberLevel: MemberLevel;
+  role?: UserRole;
 }
 
 export interface AskInput {
@@ -79,7 +82,7 @@ export const chatService = {
   /** 同步问答：等模型返回完整答案后一次性回包 */
   async ask(ctx: AskContext, input: AskInput): Promise<AskResult> {
     const sessionId = input.sessionId ?? uuidv4();
-    const tier = resolveTier(input.model, ctx.memberLevel);
+    const tier = resolveTier(input.model, ctx.memberLevel, ctx.role);
     const startedAt = Date.now();
     const logId = await chatRepo.insertPending({
       userId: ctx.userId,
@@ -139,7 +142,7 @@ export const chatService = {
     ) => Promise<void>;
   }> {
     const sessionId = input.sessionId ?? uuidv4();
-    const tier = resolveTier(input.model, ctx.memberLevel);
+    const tier = resolveTier(input.model, ctx.memberLevel, ctx.role);
     const logId = await chatRepo.insertPending({
       userId: ctx.userId,
       sessionId,

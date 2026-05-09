@@ -43,7 +43,7 @@ chatRouter.post(
   async (req, res) => {
     const body = askSchema.parse(req.body);
     const result = await chatService.ask(
-      { userId: req.user!.id, memberLevel: req.user!.memberLevel },
+      { userId: req.user!.id, memberLevel: req.user!.memberLevel, role: req.user!.role },
       body,
     );
     res.json({ success: true, data: result });
@@ -76,7 +76,7 @@ chatRouter.post(
     const write = (obj: unknown) => res.write(`data: ${JSON.stringify(obj)}\n\n`);
 
     const { sessionId, logId, tier, iterator, finalize } = await chatService.askStream(
-      { userId: req.user!.id, memberLevel: req.user!.memberLevel },
+      { userId: req.user!.id, memberLevel: req.user!.memberLevel, role: req.user!.role },
       body,
     );
 

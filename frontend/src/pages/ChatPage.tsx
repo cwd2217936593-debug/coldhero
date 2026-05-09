@@ -22,7 +22,10 @@ const SUGGEST = [
 
 export default function ChatPage() {
   const user = useAuthStore((s) => s.user);
-  const isPro = user?.memberLevel === "pro" || user?.memberLevel === "enterprise";
+  const isPro =
+    user?.role === "admin" ||
+    user?.memberLevel === "pro" ||
+    user?.memberLevel === "enterprise";
 
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [activeSession, setActiveSession] = useState<string>(() => uuidv4());

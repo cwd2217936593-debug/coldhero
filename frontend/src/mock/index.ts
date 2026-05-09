@@ -10,6 +10,11 @@
 import type { AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from "axios";
 import { v4 as uuidv4 } from "uuid";
 import { api } from "@/api/client";
+import {
+  applyExternalApiBaseUrl,
+  shouldBypassMockAdapter,
+  shouldChatStreamHitRealBackend,
+} from "@/lib/deepseekBridge";
 import type {
   ApiResp,
   ChatLog,
@@ -326,14 +331,33 @@ function fail(status: number, code: string, message: string): AxiosResponse<ApiR
   };
 }
 
+function currentUserFromStore(): User | null {
+  try {
+    const raw = localStorage.getItem("coldhero-auth");
+    if (raw) return JSON.parse(raw).state.user as User;
+  } catch { /* ignore */ }
+  return null;
+}
+
 async function fakeRequest(cfg: AxiosRequestConfig): Promise<InternalAxiosRequestConfig> {
+  const method = (cfg.method || "get").toLowerCase();
+  let pathKey = String(cfg.url || "").replace(/^\/?api\/?/i, "");
+  pathKey = pathKey.replace(/^\/+/, "");
+
+  if (shouldBypassMockAdapter(method, pathKey, currentUserFromStore())) {
+    const c = cfg as InternalAxiosRequestConfig;
+    applyExternalApiBaseUrl(c);
+    delete c.adapter;
+    return c;
+  }
+
   // 短路：把 adapter 替换成自定义函数，跳过真实网络
   cfg.adapter = async (c) => {
     await delay(150 + Math.random() * 250);
-    let url = String(c.url || "").replace(/^\/?api\//, "");
+    let url = String(c.url || "").replace(/^\/?api\/?/i, "");
     url = url.replace(/^\/+/, "");
-    const method = (c.method || "get").toLowerCase();
-    return route(method, url, parseBody(c.data), c.params || {});
+    const methodInner = (c.method || "get").toLowerCase();
+    return route(methodInner, url, parseBody(c.data), c.params || {});
   };
   return cfg as InternalAxiosRequestConfig;
 }
@@ -1189,7 +1213,12 @@ function mockAnswer(q: string): string {
 const realFetch = window.fetch.bind(window);
 window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-  if (url.includes("/api/chat/messages/stream")) {
+  const isChatStream =
+    url.includes("/chat/messages/stream") || url.includes("/api/chat/messages/stream");
+  if (isChatStream && shouldChatStreamHitRealBackend()) {
+    return realFetch(input as RequestInfo | URL, init);
+  }
+  if (isChatStream) {
     return mockStream(init);
   }
   return realFetch(input as RequestInfo | URL, init);
@@ -1279,4 +1308,9 @@ class MockWebSocket extends EventTarget {
 (window as unknown as { WebSocket: typeof RealWebSocket }).WebSocket = MockWebSocket as unknown as typeof RealWebSocket;
 
 // 运行标识
-console.info("%c[coldhero] Mock 模式已启用", "color:#1f72ee;font-weight:bold");
+console.info(
+  `%c[coldhero] Mock 模式已启用${
+    import.meta.env.VITE_API_BASE_URL ? "（已设 VITE_API_BASE_URL：登录与管理员/企业版问答走真实 API）" : ""
+  }`,
+  "color:#1f72ee;font-weight:bold",
+);
