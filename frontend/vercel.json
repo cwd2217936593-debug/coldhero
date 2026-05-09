@@ -1,6 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
+  "build": {
+    "env": {
+      "VITE_USE_MOCK": "1"
+    }
+  },
   "rewrites": [
     {
       "source": "/((?!api/|ws(?:$|/)).*)",
