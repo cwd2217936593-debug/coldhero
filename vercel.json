@@ -1,11 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
   "build": {
     "env": {
       "VITE_USE_MOCK": "1"
     }
   },
-  "installCommand": "cd frontend && npm install",
+  "installCommand": "cd frontend && npm ci",
   "buildCommand": "cd frontend && npm run build",
   "outputDirectory": "frontend/dist",
   "rewrites": [

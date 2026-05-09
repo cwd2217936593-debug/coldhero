@@ -18,6 +18,9 @@ logs/
 *.log
 npm-debug.log*
 
+# Vercel CLI 本地链接信息（勿提交）
+.vercel/
+
 # IDE / OS
 .vscode/
 .idea/
