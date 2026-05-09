@@ -1,15 +1,24 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import ReactECharts from "echarts-for-react";
+import { useAuthStore } from "@/store/authStore";
+import { getExternalApiOrigin, isHybridMockWithBackend } from "@/lib/deepseekBridge";
 import {
+  formatSimContextForDeepseek,
   GBR_DEMO_FEATURE_IMPORTANCE,
   GBR_DEMO_METRICS_INLINE,
   predictColdStorageTemp,
 } from "@/lib/coldStorageSimModel";
+import type { ChatEntryState } from "@/types/chatEntry";
 
 /**
  * 自单页 HTML 大屏剥离的 GBR 演示公式 + 特征重要性图（仅前端演算，不接 pkl）。
  */
 export default function GbrDemoPredictor() {
+  const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role === "admin";
+
   const [humidityPct, setHumidityPct] = useState(45);
   const [compressorRunning, setCompressorRunning] = useState(true);
   const [defrostActive, setDefrostActive] = useState(false);
@@ -73,6 +82,29 @@ export default function GbrDemoPredictor() {
       : result.status === "偏高"
         ? "text-amber-700 bg-amber-50 border-amber-200"
         : "text-rose-700 bg-rose-50 border-rose-200";
+
+  const simInput = {
+    humidityPct,
+    compressorRunning,
+    defrostActive,
+    doorOpen,
+    ambientTempC,
+    energyKw,
+    hourOfDay,
+  };
+
+  function openAdminDeepseekEntry() {
+    const draft = formatSimContextForDeepseek(simInput, result);
+    const state: ChatEntryState = { draftQuestion: draft, preferProModel: true };
+    navigate("/chat", { state });
+  }
+
+  const deepseekHint =
+    import.meta.env.VITE_USE_MOCK === "1" && !getExternalApiOrigin()
+      ? "当前为纯 Mock：跳转后可先看到演示回复。若已配置 VITE_API_BASE_URL 并用种子账号登录真实后端，管理员问答将走 DeepSeek API。"
+      : import.meta.env.VITE_USE_MOCK === "1" && isHybridMockWithBackend()
+        ? "混合模式：跳转后默认选用 pro 模型，并由真实后端调用 DeepSeek（请先完成真实登录以获取 JWT）。"
+        : "将打开 AI 助理并预填当前工况，默认选用 pro 推理模型。";
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-6">
@@ -173,6 +205,20 @@ export default function GbrDemoPredictor() {
           <div className="text-sm tabular-nums">{result.sampleErrorC.toFixed(3)} °C</div>
         </div>
       </div>
+
+      {isAdmin && (
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50/90 px-4 py-3 space-y-2">
+          <div className="text-xs font-semibold text-indigo-950">管理员 · DeepSeek 解读入口</div>
+          <p className="text-[11px] text-indigo-900/85 leading-relaxed">{deepseekHint}</p>
+          <button
+            type="button"
+            onClick={openAdminDeepseekEntry}
+            className="text-sm font-medium px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm"
+          >
+            携带上述模拟数据打开 AI 对话（DeepSeek）
+          </button>
+        </div>
+      )}
 
       <div>
         <div className="text-xs font-medium text-slate-700 mb-2">特征重要性 Top 10（原模型 Gain）</div>

@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { v4 as uuidv4 } from "uuid";
 import dayjs from "dayjs";
 import clsx from "clsx";
 import { askStream, listMessages, listSessions } from "@/api/chat";
 import { useAuthStore } from "@/store/authStore";
 import type { ChatLog, SessionSummary } from "@/api/types";
+import type { ChatEntryState } from "@/types/chatEntry";
 
 interface UiMsg {
   role: "user" | "assistant";
@@ -22,10 +24,9 @@ const SUGGEST = [
 
 export default function ChatPage() {
   const user = useAuthStore((s) => s.user);
-  const isPro =
-    user?.role === "admin" ||
-    user?.memberLevel === "pro" ||
-    user?.memberLevel === "enterprise";
+  const location = useLocation();
+  const navigate = useNavigate();
+  const preferProPendingRef = useRef(false);
 
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [activeSession, setActiveSession] = useState<string>(() => uuidv4());
@@ -35,6 +36,27 @@ export default function ChatPage() {
   const [streaming, setStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const isPro =
+    user?.role === "admin" ||
+    user?.memberLevel === "pro" ||
+    user?.memberLevel === "enterprise";
+
+  useEffect(() => {
+    const st = location.state as ChatEntryState | null;
+    if (!st?.draftQuestion) return;
+    setInput(st.draftQuestion);
+    preferProPendingRef.current = !!st.preferProModel;
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [location.state, location.pathname, navigate]);
+
+  useEffect(() => {
+    if (!preferProPendingRef.current || !user) return;
+    if (user.role === "admin" || user.memberLevel === "pro" || user.memberLevel === "enterprise") {
+      setModel("pro");
+    }
+    preferProPendingRef.current = false;
+  }, [user]);
 
   // 加载历史会话
   useEffect(() => {

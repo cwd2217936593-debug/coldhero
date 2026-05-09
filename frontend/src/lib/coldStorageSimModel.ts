@@ -118,3 +118,27 @@ export const GBR_DEMO_METRICS_INLINE = {
   samples: 105_240,
   features: 77,
 } as const;
+
+/** 将当前模拟工况整理为发给 DeepSeek 的上下文（管理员从历史页一键带入） */
+export function formatSimContextForDeepseek(
+  input: ColdStorageSimInputs,
+  result: ColdStorageSimResult,
+): string {
+  return `【GBR 演示近似模型演算结果】请结合冷链/冷库专业知识解读，并给出可执行的运维建议。
+
+**模拟输入**
+- 库内相对湿度：${input.humidityPct}%
+- 压缩机：${input.compressorRunning ? "运行中" : "停机"}
+- 除霜：${input.defrostActive ? "进行中" : "未进行"}
+- 库门漏冷（等效开启）：${input.doorOpen ? "是" : "否"}
+- 室外温度：${input.ambientTempC}°C
+- 能耗指标：${input.energyKw}（相对演示基准 8.5）
+- 当地小时：${input.hourOfDay}
+
+**近似模型输出**
+- 预测库温：${result.predictedC.toFixed(2)}°C
+- 判定状态：${result.status}
+- 展示用不确定度：±${result.ciHalfWidthC.toFixed(3)}°C（来自离线 GBR 报告口径）
+
+请简要回答：1）该情景下库温与设备状态是否自洽；2）主要风险点；3）建议现场核查的顺序。`;
+}
