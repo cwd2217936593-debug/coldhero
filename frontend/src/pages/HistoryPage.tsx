@@ -6,6 +6,7 @@ import clsx from "clsx";
 import { listZones, getZoneCompare } from "@/api/sensors";
 import { errMessage } from "@/api/client";
 import type { CompareResp, Zone } from "@/api/types";
+import GbrDemoPredictor from "@/components/GbrDemoPredictor";
 
 const RANGES = [
   { label: "近 1 小时",  hours: 1 },
@@ -103,6 +104,8 @@ export default function HistoryPage() {
           {zone && <span> 阈值：{zone.tempMin} °C ~ {zone.tempMax} °C</span>}
         </div>
       </div>
+
+      <GbrDemoPredictor />
     </div>
   );
 }

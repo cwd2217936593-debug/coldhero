@@ -1,0 +1,183 @@
+import { useMemo, useState } from "react";
+import ReactECharts from "echarts-for-react";
+import {
+  GBR_DEMO_FEATURE_IMPORTANCE,
+  GBR_DEMO_METRICS_INLINE,
+  predictColdStorageTemp,
+} from "@/lib/coldStorageSimModel";
+
+/**
+ * 自单页 HTML 大屏剥离的 GBR 演示公式 + 特征重要性图（仅前端演算，不接 pkl）。
+ */
+export default function GbrDemoPredictor() {
+  const [humidityPct, setHumidityPct] = useState(45);
+  const [compressorRunning, setCompressorRunning] = useState(true);
+  const [defrostActive, setDefrostActive] = useState(false);
+  const [doorOpen, setDoorOpen] = useState(false);
+  const [ambientTempC, setAmbientTempC] = useState(28);
+  const [energyKw, setEnergyKw] = useState(8.5);
+  const [hourOfDay, setHourOfDay] = useState(14);
+
+  const result = useMemo(
+    () =>
+      predictColdStorageTemp({
+        humidityPct,
+        compressorRunning,
+        defrostActive,
+        doorOpen,
+        ambientTempC,
+        energyKw,
+        hourOfDay,
+      }),
+    [
+      humidityPct,
+      compressorRunning,
+      defrostActive,
+      doorOpen,
+      ambientTempC,
+      energyKw,
+      hourOfDay,
+    ],
+  );
+
+  const fiOption = useMemo(
+    () => ({
+      grid: { left: 150, right: 56, top: 8, bottom: 28 },
+      tooltip: { trigger: "axis" as const },
+      xAxis: {
+        type: "value" as const,
+        name: "重要性 (Gain)",
+        nameTextStyle: { fontSize: 10 },
+        splitLine: { lineStyle: { type: "dashed" as const } },
+      },
+      yAxis: {
+        type: "category" as const,
+        data: [...GBR_DEMO_FEATURE_IMPORTANCE].reverse().map((d) => d.name),
+        axisLabel: { fontSize: 10 },
+      },
+      series: [
+        {
+          type: "bar" as const,
+          data: [...GBR_DEMO_FEATURE_IMPORTANCE].reverse().map((d) => d.gain),
+          itemStyle: { color: "#6366f1", borderRadius: [0, 4, 4, 0] },
+          label: { show: true, position: "right" as const, fontSize: 10, formatter: "{c}" },
+        },
+      ],
+    }),
+    [],
+  );
+
+  const statusCls =
+    result.status === "正常"
+      ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+      : result.status === "偏高"
+        ? "text-amber-700 bg-amber-50 border-amber-200"
+        : "text-rose-700 bg-rose-50 border-rose-200";
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-6">
+      <div>
+        <h2 className="text-sm font-semibold text-slate-900">GBR Stacking 演示近似（来源：旧版大屏 HTML）</h2>
+        <p className="text-[11px] text-slate-500 mt-1">
+          与原始页面中「无 pkl、线性统计近似」一致；训练报告级指标 RMSE≈{GBR_DEMO_METRICS_INLINE.rmse}°C · R²≈
+          {GBR_DEMO_METRICS_INLINE.r2}（展示用，非本表单实时校准）。
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <label className="block text-xs text-slate-600">
+          库内湿度 (%)
+          <input
+            type="number"
+            className="mt-1 w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+            value={humidityPct}
+            onChange={(e) => setHumidityPct(Number(e.target.value))}
+          />
+        </label>
+        <label className="block text-xs text-slate-600">
+          室外温度 (°C)
+          <input
+            type="number"
+            className="mt-1 w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+            value={ambientTempC}
+            onChange={(e) => setAmbientTempC(Number(e.target.value))}
+          />
+        </label>
+        <label className="block text-xs text-slate-600">
+          能耗指标（基准 8.5）
+          <input
+            type="number"
+            step="0.1"
+            className="mt-1 w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+            value={energyKw}
+            onChange={(e) => setEnergyKw(Number(e.target.value))}
+          />
+        </label>
+        <label className="block text-xs text-slate-600">
+          当前小时 (0–23)
+          <input
+            type="number"
+            min={0}
+            max={23}
+            className="mt-1 w-full border border-slate-300 rounded-md px-2 py-1.5 text-sm"
+            value={hourOfDay}
+            onChange={(e) => setHourOfDay(Number(e.target.value))}
+          />
+        </label>
+      </div>
+
+      <div className="flex flex-wrap gap-6 text-xs text-slate-700">
+        <label className="inline-flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={compressorRunning}
+            onChange={(e) => setCompressorRunning(e.target.checked)}
+          />
+          压缩机运行中
+        </label>
+        <label className="inline-flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={defrostActive}
+            onChange={(e) => setDefrostActive(e.target.checked)}
+          />
+          除霜进行中
+        </label>
+        <label className="inline-flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={doorOpen}
+            onChange={(e) => setDoorOpen(e.target.checked)}
+          />
+          库门漏冷（等效开启）
+        </label>
+      </div>
+
+      <div
+        className={`rounded-xl border px-4 py-3 flex flex-wrap items-baseline gap-4 ${statusCls}`}
+      >
+        <div>
+          <div className="text-[11px] opacity-80">预测库温</div>
+          <div className="text-2xl font-semibold tabular-nums">{result.predictedC.toFixed(2)} °C</div>
+        </div>
+        <div>
+          <div className="text-[11px] opacity-80">状态</div>
+          <div className="text-sm font-medium">{result.status}</div>
+        </div>
+        <div>
+          <div className="text-[11px] opacity-80">展示区间</div>
+          <div className="text-sm tabular-nums">±{result.ciHalfWidthC.toFixed(3)} °C</div>
+        </div>
+        <div>
+          <div className="text-[11px] opacity-80">样本误差（演示随机）</div>
+          <div className="text-sm tabular-nums">{result.sampleErrorC.toFixed(3)} °C</div>
+        </div>
+      </div>
+
+      <div>
+        <div className="text-xs font-medium text-slate-700 mb-2">特征重要性 Top 10（原模型 Gain）</div>
+        <ReactECharts option={fiOption} style={{ height: 320 }} notMerge lazyUpdate />
+      </div>
+    </div>
+  );
+}
