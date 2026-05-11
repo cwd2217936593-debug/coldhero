@@ -12,13 +12,14 @@ import { pool, closeMysql } from "@/db/mysql";
 import { logger } from "@/utils/logger";
 
 const DEFAULT_PASSWORD = "Coldhero@123";
-const SEED_USERNAMES = ["admin", "demo_free", "demo_basic", "demo_pro", "demo_ent"];
+const SEED_USERNAMES = ["admin", "demo_free", "demo_basic", "demo_pro", "demo_ent"] as const;
 
 async function main() {
   const hash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
+  const placeholders = SEED_USERNAMES.map(() => "?").join(",");
   const [result] = await pool.query(
-    "UPDATE users SET password_hash = ? WHERE username IN (?)",
-    [hash, SEED_USERNAMES],
+    `UPDATE users SET password_hash = ? WHERE username IN (${placeholders})`,
+    [hash, ...SEED_USERNAMES],
   );
   logger.info({ result }, `✅ 已重置 ${SEED_USERNAMES.length} 个种子用户密码为 ${DEFAULT_PASSWORD}`);
 }

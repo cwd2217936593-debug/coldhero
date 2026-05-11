@@ -10,6 +10,7 @@ import ShowcasePage from "@/pages/ShowcasePage";
 import FaultsPage from "@/pages/FaultsPage";
 import ReportsPage from "@/pages/ReportsPage";
 import SurveysPage from "@/pages/SurveysPage";
+import { MobilePreviewToolkit } from "@/dev/MobilePreviewToolkit";
 
 function RequireAuth({ children }: { children: JSX.Element }) {
   const token = useAuthStore((s) => s.token);
@@ -19,7 +20,8 @@ function RequireAuth({ children }: { children: JSX.Element }) {
 
 export default function App() {
   return (
-    <Routes>
+    <>
+      <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route
         path="/"
@@ -40,6 +42,8 @@ export default function App() {
         <Route path="notifications" element={<NotificationsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
-    </Routes>
+      </Routes>
+      <MobilePreviewToolkit />
+    </>
   );
 }

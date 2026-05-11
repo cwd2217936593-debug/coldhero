@@ -68,7 +68,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-baseline gap-3">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-3">
         <h1 className="text-xl font-semibold text-slate-900">实时仪表盘</h1>
         <span className="text-xs text-slate-500">实时 WebSocket · 当前 {snapshots.length} 个库区</span>
       </div>
@@ -97,21 +97,22 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
-        <div className="flex items-center justify-between mb-3">
-          <div>
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0 flex-1">
             <div className="text-sm font-medium text-slate-700">
               {selectedZone ? `${selectedZone.code} · ${selectedZone.name}` : "请选择库区"}
             </div>
-            <div className="text-[11px] text-slate-400">
+            <div className="text-[11px] leading-relaxed text-slate-400">
               最近 2 小时温度（红虚线 = 阈值；新数据由 WebSocket 实时追加）
               {series.length > 0 && ` · 共 ${series.length} 个数据点`}
             </div>
           </div>
           <button
+            type="button"
             disabled={!selected}
             onClick={() => selected && nav(`/history?zoneId=${selected}`)}
-            className="text-xs px-3 py-1.5 rounded-md border border-slate-300 hover:bg-slate-100 disabled:opacity-50"
+            className="shrink-0 rounded-md border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-100 disabled:opacity-50"
           >
             查看历史与拟合 →
           </button>

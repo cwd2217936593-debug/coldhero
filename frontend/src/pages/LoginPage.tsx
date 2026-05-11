@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { login } from "@/api/auth";
+import { probeBackendDeep } from "@/api/health";
 import { errMessage } from "@/api/client";
+import { isHybridMockWithBackend } from "@/lib/deepseekBridge";
 import { useAuthStore } from "@/store/authStore";
 
 const PRESETS = [
@@ -20,10 +22,27 @@ export default function LoginPage() {
   const [password, setPassword] = useState("Coldhero@123");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [infraHint, setInfraHint] = useState<string | null>(null);
 
   useEffect(() => {
     if (token) nav("/dashboard", { replace: true });
   }, [token, nav]);
+
+  useEffect(() => {
+    if (!isHybridMockWithBackend()) return;
+    let cancelled = false;
+    probeBackendDeep().then(({ ok, summary }) => {
+      if (cancelled) return;
+      setInfraHint(
+        ok
+          ? null
+          : `后端依赖检测未通过：${summary}。\n\n操作建议（项目根目录 coldhero）：\n① 仅数据库：npm run docker:deps\n② 数据库 + 容器内 API：npm run docker:api（需已复制 .env.example 为 .env，且 Docker 能拉镜像）\n③ 本地调试用后端：执行①后在 backend 目录 npm run dev\n\n验证：浏览器打开 http://localhost:4000/api/health 应返回 JSON。`,
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -41,8 +60,8 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-100 via-brand-50 to-cyan-50 flex">
-      <div className="hidden lg:flex flex-1 items-center justify-center p-12">
+    <div className="flex min-h-[100dvh] flex-col overflow-x-hidden bg-gradient-to-br from-slate-100 via-brand-50 to-cyan-50 lg:flex-row">
+      <div className="hidden flex-1 items-center justify-center p-12 lg:flex">
         <div className="max-w-md text-slate-700">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-12 h-12 rounded-xl bg-brand-600 grid place-items-center text-white text-xl font-bold">CH</div>
@@ -60,10 +79,17 @@ export default function LoginPage() {
         </div>
       </div>
 
-      <div className="flex-1 flex items-center justify-center p-6">
-        <form onSubmit={submit} className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-8">
-          <h1 className="text-xl font-semibold text-slate-900 mb-1">登录</h1>
-          <p className="text-sm text-slate-500 mb-6">使用用户名或邮箱登录</p>
+      <div className="flex flex-1 flex-col justify-center px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] sm:px-6 lg:items-center lg:px-8">
+        <form onSubmit={submit} className="mx-auto w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl sm:p-8">
+          <div className="mb-6 flex items-center gap-3 lg:hidden">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-brand-600 text-lg font-bold text-white">CH</div>
+            <div>
+              <div className="font-semibold text-slate-900 leading-tight">冷库智能监管</div>
+              <div className="text-[11px] text-slate-500">ColdHero</div>
+            </div>
+          </div>
+          <h1 className="mb-1 text-xl font-semibold text-slate-900">登录</h1>
+          <p className="mb-6 text-sm text-slate-500">使用用户名或邮箱登录</p>
 
           <div className="space-y-3 mb-4">
             {PRESETS.map((p) => (
@@ -98,7 +124,12 @@ export default function LoginPage() {
             className="w-full mb-4 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-300"
           />
 
-          {err && <div className="text-sm text-red-600 mb-3">{err}</div>}
+          {infraHint && (
+            <div className="mb-3 overflow-hidden break-words rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-relaxed text-amber-800">
+              {infraHint}
+            </div>
+          )}
+          {err && <div className="text-sm text-red-600 mb-3 whitespace-pre-wrap">{err}</div>}
 
           <button
             type="submit"

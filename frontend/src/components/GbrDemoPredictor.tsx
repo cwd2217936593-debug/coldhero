@@ -101,10 +101,10 @@ export default function GbrDemoPredictor() {
 
   const deepseekHint =
     import.meta.env.VITE_USE_MOCK === "1" && !getExternalApiOrigin()
-      ? "当前为纯 Mock：跳转后可先看到演示回复。若已配置 VITE_API_BASE_URL 并用种子账号登录真实后端，管理员问答将走 DeepSeek API。"
+      ? "请配置 VITE_API_BASE_URL 并以管理员登录：问答由后端直连 DeepSeek，已取消前端「模拟回答」。"
       : import.meta.env.VITE_USE_MOCK === "1" && isHybridMockWithBackend()
-        ? "混合模式：跳转后默认选用 pro 模型，并由真实后端调用 DeepSeek（请先完成真实登录以获取 JWT）。"
-        : "将打开 AI 助理并预填当前工况，默认选用 pro 推理模型。";
+        ? "混合模式：管理员 JWT 下的问答走真实后端 DeepSeek（pro 模型）。"
+        : "将打开 AI 助理并预填工况，后端使用 DeepSeek（pro）生成回答。";
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-6">
@@ -215,7 +215,7 @@ export default function GbrDemoPredictor() {
             onClick={openAdminDeepseekEntry}
             className="text-sm font-medium px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm"
           >
-            携带上述模拟数据打开 AI 对话（DeepSeek）
+            携带上述工况打开 AI 对话（管理员 · DeepSeek）
           </button>
         </div>
       )}

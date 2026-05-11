@@ -12,6 +12,8 @@ import { v4 as uuidv4 } from "uuid";
 import { api } from "@/api/client";
 import {
   applyExternalApiBaseUrl,
+  getUserForChatGate,
+  relayApiViaViteProxyInDev,
   shouldBypassMockAdapter,
   shouldChatStreamHitRealBackend,
 } from "@/lib/deepseekBridge";
@@ -344,9 +346,11 @@ async function fakeRequest(cfg: AxiosRequestConfig): Promise<InternalAxiosReques
   let pathKey = String(cfg.url || "").replace(/^\/?api\/?/i, "");
   pathKey = pathKey.replace(/^\/+/, "");
 
-  if (shouldBypassMockAdapter(method, pathKey, currentUserFromStore())) {
+  if (shouldBypassMockAdapter(method, pathKey, getUserForChatGate())) {
     const c = cfg as InternalAxiosRequestConfig;
-    applyExternalApiBaseUrl(c);
+    if (!relayApiViaViteProxyInDev()) {
+      applyExternalApiBaseUrl(c);
+    }
     delete c.adapter;
     return c;
   }
@@ -550,6 +554,15 @@ function route(method: string, url: string, body: Record<string, unknown>, param
     return ok(data);
   }
   if (method === "post" && url === "chat/messages") {
+    const u = currentUser();
+    // 管理员必须走后端 DeepSeek；纯 Mock 且无 VITE_API_BASE_URL 时拒绝，避免误以为真模型
+    if (u.role === "admin" && !shouldBypassMockAdapter("post", "chat/messages", u)) {
+      return fail(
+        503,
+        "SERVICE_UNAVAILABLE",
+        "管理员 AI 冷库助理需连接真实后端（配置 VITE_API_BASE_URL + DeepSeek）。已关闭前端模拟回答。",
+      );
+    }
     const plan = PLANS[currentUser().memberLevel];
     if (plan.aiChatPerDay >= 0 && QUOTA.aiChat >= plan.aiChatPerDay) {
       return fail(429, "RATE_LIMITED", "当日 AI 问答次数已用完");
@@ -1194,16 +1207,14 @@ function currentUser(): User {
 }
 
 function mockAnswer(q: string): string {
-  return `（演示模式 · 模拟回答）针对您的问题"${q.slice(0, 40)}${q.length > 40 ? "…" : ""}"，初步分析如下：
+  // 非管理员演示用；不需要时可整段改成 return fail 或注释 chat mock 分支
+  return `（演示 · 非 DeepSeek）针对您的问题"${q.slice(0, 40)}${q.length > 40 ? "…" : ""}"，示例分析如下：
 
-1. **可能原因**：在冷藏库环境中，温度持续超出阈值往往与制冷机组负载、库门密封、化霜周期相关。
-2. **现场排查建议**：
-   - 检查机组运行状态与回气压力；
-   - 查看库门是否长时间打开或密封条老化；
-   - 核对最近化霜记录，蒸发器若结冰过厚会显著降低制冷效率。
-3. **应急处理**：货物温度若已接近临界值，建议优先转移至备用库区，并尽快联系厂家技术支持。
+1. **可能原因**：冷藏库温度异常常与制冷负载、库门密封、化霜周期有关。
+2. **现场排查建议**：检查机组与回气压力；库门与密封条；化霜与蒸发器结冰情况。
+3. **应急处理**：临界时考虑转移货物并联系技术支持。
 
-⚠️ 本回答由前端 mock 模式生成，接入真实后端后将由 DeepSeek / 通义千问产生具体方案。`;
+⚠️ 冷库助理（DeepSeek）仅对管理员开放；请使用管理员账号并配置后端。`;
 }
 
 // =============================================================
@@ -1225,6 +1236,24 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Res
 };
 
 function mockStream(init?: RequestInit): Response {
+  const u = currentUser();
+  // 管理员：仅允许真实流式；不配后端时不在此返回模拟正文
+  if (u.role === "admin") {
+    const stream = new ReadableStream({
+      start(controller) {
+        const encoder = new TextEncoder();
+        const msg =
+          "管理员请配置 VITE_API_BASE_URL 并登录，以连接后端 DeepSeek 流式接口。此处不再提供「模拟回答」。";
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "error", message: msg })}\n\n`));
+        controller.close();
+      },
+    });
+    return new Response(stream, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream; charset=utf-8" },
+    });
+  }
+
   const body = init?.body ? JSON.parse(String(init.body)) : {};
   const sid = body.sessionId ?? uuidv4();
   const q = String(body.question ?? "");

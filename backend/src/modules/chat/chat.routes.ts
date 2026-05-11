@@ -10,6 +10,7 @@
  *  - 每日配额：requireQuota('aiChat')，按会员等级限制
  */
 
+import type { RequestHandler } from "express";
 import { Router } from "express";
 import { requireAuth } from "@/middlewares/auth";
 import { rateLimit } from "@/middlewares/rateLimit";
@@ -26,6 +27,15 @@ import { logger } from "@/utils/logger";
 
 export const chatRouter = Router();
 
+/** 仅管理员可调用 DeepSeek（AI 冷库助理） */
+const requireAdminAiChat: RequestHandler = (req, res, next) => {
+  if (req.user?.role !== "admin") {
+    res.status(403).json({ success: false, message: "仅管理员可使用 AI 冷库助理（DeepSeek）。" });
+    return;
+  }
+  next();
+};
+
 const userChatLimiter = rateLimit({
   name: "ai:chat",
   window: 60,
@@ -38,6 +48,7 @@ const userChatLimiter = rateLimit({
 chatRouter.post(
   "/messages",
   requireAuth,
+  requireAdminAiChat,
   userChatLimiter,
   requireQuota("aiChat"),
   async (req, res) => {
@@ -62,6 +73,7 @@ chatRouter.post(
 chatRouter.post(
   "/messages/stream",
   requireAuth,
+  requireAdminAiChat,
   userChatLimiter,
   requireQuota("aiChat"),
   async (req, res) => {
@@ -135,14 +147,19 @@ chatRouter.post(
   },
 );
 
-chatRouter.get("/sessions", requireAuth, async (req, res) => {
+chatRouter.get("/sessions", requireAuth, requireAdminAiChat, async (req, res) => {
   const sessions = await chatRepo.listSessions(req.user!.id);
   res.json({ success: true, data: sessions.map(toPublicSession) });
 });
 
-chatRouter.get("/sessions/:sessionId/messages", requireAuth, async (req, res) => {
-  const { sessionId } = listMessagesParams.parse(req.params);
-  const { limit } = listMessagesQuery.parse(req.query);
-  const list = await chatRepo.listMessages(req.user!.id, sessionId, limit);
-  res.json({ success: true, data: list.map(toPublicChatLog) });
-});
+chatRouter.get(
+  "/sessions/:sessionId/messages",
+  requireAuth,
+  requireAdminAiChat,
+  async (req, res) => {
+    const { sessionId } = listMessagesParams.parse(req.params);
+    const { limit } = listMessagesQuery.parse(req.query);
+    const list = await chatRepo.listMessages(req.user!.id, sessionId, limit);
+    res.json({ success: true, data: list.map(toPublicChatLog) });
+  },
+);

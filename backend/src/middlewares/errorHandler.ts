@@ -4,7 +4,9 @@
 
 import type { ErrorRequestHandler, RequestHandler } from "express";
 import { ZodError } from "zod";
+import { env } from "@/config/env";
 import { AppError } from "@/utils/errors";
+import { mapInfraError } from "@/utils/infraErrors";
 import { logger } from "@/utils/logger";
 
 export const notFoundHandler: RequestHandler = (req, res) => {
@@ -36,10 +38,26 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
     return;
   }
 
+  const infra = mapInfraError(err);
+  if (infra) {
+    logger.warn({ err, path: req.originalUrl, infra }, "依赖服务错误");
+    res.status(infra.status).json({
+      success: false,
+      code: infra.code,
+      message: infra.message,
+    });
+    return;
+  }
+
   logger.error({ err, path: req.originalUrl }, "未处理异常");
+
+  const detail =
+    env.APP_ENV === "development" && err instanceof Error && err.message
+      ? err.message
+      : "";
   res.status(500).json({
     success: false,
     code: "INTERNAL_ERROR",
-    message: "服务器内部错误",
+    message: detail ? `服务器内部错误：${detail}` : "服务器内部错误",
   });
 };

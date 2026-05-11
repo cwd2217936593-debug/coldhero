@@ -1,0 +1,13 @@
+{
+  "name": "coldhero",
+  "private": true,
+  "description": "根目录便捷脚本（无需在此目录 npm install）",
+  "scripts": {
+    "docker:deps": "docker compose up -d mysql redis",
+    "docker:api": "docker compose up -d mysql redis backend",
+    "docker:down": "docker compose down",
+    "backend:dev": "npm run dev --prefix backend",
+    "frontend:dev": "npm run dev --prefix frontend",
+    "seed": "npm run seed:passwords --prefix backend"
+  }
+}

@@ -36,11 +36,12 @@ export default function ChatPage() {
   const [streaming, setStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const immersiveShellRef = useRef<HTMLDivElement>(null);
 
-  const isPro =
-    user?.role === "admin" ||
-    user?.memberLevel === "pro" ||
-    user?.memberLevel === "enterprise";
+  const [immersive, setImmersive] = useState(false);
+  const [browserFullscreen, setBrowserFullscreen] = useState(false);
+
+  const isPro = user?.role === "admin";
 
   useEffect(() => {
     const st = location.state as ChatEntryState | null;
@@ -52,44 +53,97 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!preferProPendingRef.current || !user) return;
-    if (user.role === "admin" || user.memberLevel === "pro" || user.memberLevel === "enterprise") {
+    if (user.role === "admin") {
       setModel("pro");
     }
     preferProPendingRef.current = false;
   }, [user]);
 
-  // 加载历史会话
   useEffect(() => {
     listSessions().then(setSessions).catch(() => undefined);
   }, []);
 
-  // 切换会话 → 加载历史消息
+  // 切换会话：拉取服务端消息（流式进行中不拉取，避免 onStart 改掉 sessionId 时覆盖打字内容）
   useEffect(() => {
-    if (sessions.find((s) => s.sessionId === activeSession)) {
-      listMessages(activeSession)
-        .then((logs: ChatLog[]) => {
-          const ui: UiMsg[] = [];
-          for (const l of logs) {
-            ui.push({ role: "user", content: l.question });
-            if (l.answer) ui.push({ role: "assistant", content: l.answer });
-            else if (l.status === "failed") ui.push({ role: "assistant", content: "（这条提问未成功，请重试）", error: "failed" });
-          }
-          setMessages(ui);
-        })
-        .catch(() => undefined);
-    } else {
-      setMessages([]);
-    }
-  }, [activeSession]);
+    if (streaming) return;
+    let cancelled = false;
+    listMessages(activeSession)
+      .then((logs: ChatLog[]) => {
+        if (cancelled) return;
+        const ui: UiMsg[] = [];
+        for (const l of logs) {
+          ui.push({ role: "user", content: l.question });
+          if (l.answer) ui.push({ role: "assistant", content: l.answer });
+          else if (l.status === "failed")
+            ui.push({ role: "assistant", content: "（这条提问未成功，请重试）", error: "failed" });
+        }
+        setMessages(ui);
+      })
+      .catch(() => {
+        if (!cancelled) setMessages([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSession, streaming]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    const onFs = () => setBrowserFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
+
+  useEffect(() => {
+    if (!immersive) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (document.fullscreenElement) {
+        void exitBrowserFullscreen();
+        return;
+      }
+      setImmersive(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [immersive]);
+
+  async function enterBrowserFullscreen() {
+    const el = immersiveShellRef.current;
+    if (!el) return;
+    try {
+      await el.requestFullscreen({ navigationUI: "hide" });
+    } catch {
+      /* 部分浏览器/内嵌 WebView 不支持 */
+    }
+  }
+
+  async function exitBrowserFullscreen() {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function toggleBrowserFullscreen() {
+    if (document.fullscreenElement) await exitBrowserFullscreen();
+    else await enterBrowserFullscreen();
+  }
+
+  async function exitImmersive() {
+    await exitBrowserFullscreen();
+    setImmersive(false);
+  }
+
   function newSession() {
     abortRef.current?.abort();
     setActiveSession(uuidv4());
     setMessages([]);
+    listSessions().then(setSessions).catch(() => undefined);
   }
 
   async function send(text?: string) {
@@ -155,55 +209,115 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="grid grid-cols-12 gap-5 h-[calc(100vh-7.5rem)]">
-      {/* 会话列表 */}
-      <aside className="col-span-12 md:col-span-3 bg-white rounded-2xl border border-slate-200 p-3 flex flex-col">
-        <button
-          onClick={newSession}
-          className="w-full mb-3 px-3 py-2 rounded-lg bg-brand-600 text-white text-sm hover:bg-brand-700 transition"
-        >
-          + 新建会话
-        </button>
-        <div className="text-[11px] text-slate-400 px-1 mb-1">最近会话</div>
-        <div className="flex-1 overflow-y-auto space-y-1">
-          {sessions.length === 0 && (
-            <div className="text-xs text-slate-400 p-3">暂无历史会话</div>
-          )}
-          {sessions.map((s) => (
-            <button
-              key={s.sessionId}
-              onClick={() => setActiveSession(s.sessionId)}
-              className={clsx(
-                "w-full text-left rounded-md px-2.5 py-2 text-xs transition",
-                s.sessionId === activeSession
-                  ? "bg-brand-50 text-brand-800"
-                  : "hover:bg-slate-50 text-slate-600",
-              )}
-            >
-              <div className="line-clamp-2 leading-snug">{s.firstQuestion}</div>
-              <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-400">
-                <span>{s.messageCount} 条</span>
-                <span>·</span>
-                <span>{dayjs(s.lastMessageAt).format("MM-DD HH:mm")}</span>
-              </div>
-            </button>
-          ))}
-        </div>
-      </aside>
+    <div
+      ref={immersiveShellRef}
+      className={clsx(
+        "flex min-h-0 gap-4 md:gap-5",
+        immersive ? "flex-col" : "flex-col md:flex-row",
+        immersive
+          ? "fixed inset-0 z-[300] box-border h-dvh max-h-dvh w-screen overflow-hidden bg-slate-100 p-3 shadow-[0_-4px_24px_rgba(0,0,0,0.12)] sm:p-4"
+          : "relative h-[calc(100dvh-13rem)] min-h-[360px] sm:h-[calc(100dvh-11rem)] md:h-[calc(100dvh-9rem)] md:min-h-[420px]",
+      )}
+    >
+      {/* 最近会话：仅非大屏时显示；大屏专注对话但仍沿用当前 session，历史仍写入服务端 */}
+      {!immersive && (
+        <aside className="flex w-full min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 max-md:max-h-[36%] md:h-auto md:max-h-none md:w-72 lg:w-80">
+          <button
+            type="button"
+            onClick={newSession}
+            className="mb-3 w-full shrink-0 rounded-lg bg-brand-600 px-3 py-2 text-sm text-white transition hover:bg-brand-700"
+          >
+            + 新建会话
+          </button>
+          <div className="mb-1 shrink-0 px-1 text-[11px] text-slate-400">最近会话</div>
+          <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain">
+            {sessions.length === 0 && (
+              <div className="p-3 text-xs text-slate-400">暂无历史会话</div>
+            )}
+            {sessions.map((s) => (
+              <button
+                key={s.sessionId}
+                type="button"
+                onClick={() => setActiveSession(s.sessionId)}
+                className={clsx(
+                  "w-full rounded-md px-2.5 py-2 text-left text-xs transition",
+                  s.sessionId === activeSession
+                    ? "bg-brand-50 text-brand-800"
+                    : "text-slate-600 hover:bg-slate-50",
+                )}
+              >
+                <div className="line-clamp-2 leading-snug">{s.firstQuestion}</div>
+                <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-400">
+                  <span>{s.messageCount} 条</span>
+                  <span>·</span>
+                  <span>{dayjs(s.lastMessageAt).format("MM-DD HH:mm")}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        </aside>
+      )}
 
-      {/* 主对话 */}
-      <section className="col-span-12 md:col-span-9 bg-white rounded-2xl border border-slate-200 flex flex-col overflow-hidden">
-        <div className="px-5 py-3 border-b border-slate-200 flex items-center gap-3">
+      <section className="flex min-h-0 flex-1 basis-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 px-4 py-3 md:gap-3 md:px-5">
           <div className="text-sm font-medium text-slate-800">AI 冷库助理</div>
-          <span className="text-[11px] text-slate-400">
+          {immersive && (
+            <button
+              type="button"
+              onClick={newSession}
+              className="shrink-0 rounded-lg bg-brand-600 px-2.5 py-1 text-xs text-white hover:bg-brand-700"
+              title="清空当前对话并开始新会话"
+            >
+              + 新建会话
+            </button>
+          )}
+          <span className="hidden text-[11px] text-slate-400 sm:inline">
             DeepSeek / 通义千问 · 自动注入您库区配置
           </span>
-          <div className="ml-auto flex items-center gap-2 text-xs">
-            <span className="text-slate-500">模型</span>
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
+            {!immersive ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setImmersive(true)}
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                  title="大屏：隐藏最近会话侧栏、助理铺满窗口；历史仍在服务端保存"
+                >
+                  大屏
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void toggleBrowserFullscreen()}
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                  title="浏览器全屏当前问答区；Esc 退出"
+                >
+                  {browserFullscreen ? "退出全屏" : "全屏"}
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void toggleBrowserFullscreen()}
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                  title="系统全屏（浏览器内）；再点一次或 Esc 退出"
+                >
+                  {browserFullscreen ? "退出全屏" : "全屏"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void exitImmersive()}
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                >
+                  退出大屏
+                </button>
+              </>
+            )}
+            <span className="text-slate-500 text-xs max-sm:sr-only">模型</span>
             <select
               value={model}
               onChange={(e) => setModel(e.target.value as "fast" | "pro")}
-              className="border border-slate-300 rounded px-2 py-1 bg-white"
+              className="border border-slate-300 rounded px-2 py-1 bg-white text-xs"
             >
               <option value="fast">fast（极速）</option>
               <option value="pro" disabled={!isPro}>pro（推理强 · pro/enterprise 可用）</option>
@@ -211,7 +325,10 @@ export default function ChatPage() {
           </div>
         </div>
 
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-4 space-y-4 bg-slate-50/40">
+        <div
+          ref={scrollRef}
+          className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain bg-slate-50/40 px-4 py-4 md:px-5"
+        >
           {messages.length === 0 && (
             <div className="text-center text-slate-400 py-10">
               <div className="text-3xl mb-2">🤖</div>
@@ -250,7 +367,7 @@ export default function ChatPage() {
           ))}
         </div>
 
-        <div className="border-t border-slate-200 p-3 bg-white">
+        <div className="shrink-0 border-t border-slate-200 bg-white p-3">
           <div className="flex items-end gap-2">
             <textarea
               value={input}

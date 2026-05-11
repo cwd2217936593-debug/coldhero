@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import clsx from "clsx";
 import { useAuthStore } from "@/store/authStore";
 import { getMyQuota } from "@/api/auth";
@@ -28,8 +28,10 @@ export default function Layout() {
   const user = useAuthStore((s) => s.user);
   const clear = useAuthStore((s) => s.clear);
   const nav = useNavigate();
+  const location = useLocation();
   const [quota, setQuota] = useState<{ aiChat: QuotaState; report: QuotaState } | null>(null);
   const [unread, setUnread] = useState(0);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -46,41 +48,80 @@ export default function Layout() {
     return () => { live = false; clearInterval(t); };
   }, []);
 
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [mobileNavOpen]);
+
   function logout() {
     clear();
     nav("/login");
   }
 
   return (
-    <div className="min-h-screen flex bg-slate-50">
-      {/* 侧边栏 */}
-      <aside className="w-60 bg-slate-900 text-slate-100 flex flex-col">
-        <div className="px-5 py-5 border-b border-slate-800 flex items-center gap-2">
-          <div className="w-9 h-9 rounded-lg bg-brand-600 grid place-items-center text-white text-base font-bold">CH</div>
-          <div>
-            <div className="font-semibold leading-tight">ColdHero</div>
-            <div className="text-[11px] text-slate-400">冷库智能监管</div>
+    <div className="flex min-h-[100dvh] bg-slate-50">
+      <button
+        type="button"
+        aria-label="关闭导航菜单"
+        className={clsx(
+          "fixed inset-0 z-30 bg-black/40 transition-opacity lg:hidden",
+          mobileNavOpen ? "opacity-100" : "pointer-events-none opacity-0",
+        )}
+        onClick={() => setMobileNavOpen(false)}
+      />
+
+      <aside
+        className={clsx(
+          "fixed inset-y-0 left-0 z-40 flex w-[min(17.5rem,88vw)] flex-col bg-slate-900 text-slate-100 shadow-xl transition-transform duration-200 ease-out lg:static lg:z-0 lg:w-60 lg:max-w-none lg:translate-x-0 lg:shadow-none",
+          mobileNavOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
+        )}
+      >
+        <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-slate-800 px-4 py-4 sm:px-5">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-600 text-base font-bold text-white">CH</div>
+            <div className="min-w-0">
+              <div className="truncate font-semibold leading-tight">ColdHero</div>
+              <div className="truncate text-[11px] text-slate-400">冷库智能监管</div>
+            </div>
           </div>
+          <button
+            type="button"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-300 hover:bg-slate-800 lg:hidden"
+            aria-label="关闭侧边栏"
+            onClick={() => setMobileNavOpen(false)}
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
 
-        <nav className="flex-1 py-3">
+        <nav className="flex-1 overflow-y-auto overscroll-contain py-2">
           {NAV.map((n) => (
             <NavLink
               key={n.to}
               to={n.to}
               className={({ isActive }) =>
                 clsx(
-                  "flex items-center gap-3 px-5 py-2.5 text-sm transition",
+                  "flex items-center gap-3 px-4 py-2.5 text-sm transition sm:px-5",
                   isActive
-                    ? "bg-slate-800 text-white border-l-2 border-brand-400"
-                    : "text-slate-300 hover:bg-slate-800/60",
+                    ? "border-l-2 border-brand-400 bg-slate-800 text-white"
+                    : "border-l-2 border-transparent text-slate-300 hover:bg-slate-800/60",
                 )
               }
             >
               <span className="text-base">{n.icon}</span>
               <span>{n.label}</span>
               {n.to === "/notifications" && unread > 0 && (
-                <span className="ml-auto bg-rose-500 text-white text-[10px] rounded-full px-1.5 leading-4">
+                <span className="ml-auto rounded-full bg-rose-500 px-1.5 text-[10px] leading-4 text-white">
                   {unread > 99 ? "99+" : unread}
                 </span>
               )}
@@ -88,26 +129,40 @@ export default function Layout() {
           ))}
         </nav>
 
-        <div className="px-5 py-4 border-t border-slate-800">
+        <div className="flex-shrink-0 border-t border-slate-800 px-4 py-4 sm:px-5">
           <div className="text-xs text-slate-400">当前账号</div>
-          <div className="text-sm font-medium truncate">{user?.displayName ?? user?.username}</div>
-          <div className="text-[11px] text-brand-300 mt-0.5">
+          <div className="truncate text-sm font-medium">{user?.displayName ?? user?.username}</div>
+          <div className="mt-0.5 text-[11px] text-brand-300">
             {LEVEL_LABEL[user?.memberLevel ?? "free"]}
           </div>
           <button
+            type="button"
             onClick={logout}
-            className="mt-3 w-full text-xs py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200"
+            className="mt-3 w-full rounded bg-slate-800 py-1.5 text-xs text-slate-200 hover:bg-slate-700"
           >
             退出登录
           </button>
         </div>
       </aside>
 
-      {/* 内容区 */}
-      <main className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-12 bg-white border-b border-slate-200 px-6 flex items-center justify-between">
-          <div className="text-sm text-slate-500">您好，{user?.displayName ?? user?.username}</div>
-          <div className="flex items-center gap-4 text-xs text-slate-600">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pb-[env(safe-area-inset-bottom)]">
+        <header className="flex min-h-[3rem] flex-shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-slate-200 bg-white px-4 py-2 sm:flex-nowrap sm:px-6 sm:py-0 sm:h-12">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <button
+              type="button"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-700 lg:hidden hover:bg-slate-50"
+              aria-label="打开菜单"
+              onClick={() => setMobileNavOpen(true)}
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <div className="truncate text-sm text-slate-500">
+              您好，{user?.displayName ?? user?.username}
+            </div>
+          </div>
+          <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-1.5 sm:w-auto sm:gap-3">
             {quota && (
               <>
                 <QuotaPill label="AI 问答" q={quota.aiChat} />
@@ -116,7 +171,7 @@ export default function Layout() {
             )}
           </div>
         </header>
-        <section className="flex-1 overflow-auto p-6">
+        <section className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-4 sm:p-6">
           <Outlet />
         </section>
       </main>
@@ -129,9 +184,9 @@ function QuotaPill({ label, q }: { label: string; q: QuotaState }) {
   const ratio = unlimited ? 0 : Math.min(1, q.used / Math.max(1, q.limit));
   const danger = !unlimited && ratio >= 0.8;
   return (
-    <div className={clsx("flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1", danger && "bg-rose-50")}>
-      <span className={clsx("font-medium", danger ? "text-rose-700" : "text-slate-700")}>{label}</span>
-      <span className={clsx(danger ? "text-rose-700" : "text-slate-500")}>
+    <div className={clsx("flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 sm:gap-2 sm:px-3", danger && "bg-rose-50")}>
+      <span className={clsx("font-medium text-[10px] sm:text-xs", danger ? "text-rose-700" : "text-slate-700")}>{label}</span>
+      <span className={clsx("text-[10px] sm:text-xs", danger ? "text-rose-700" : "text-slate-500")}>
         {unlimited ? "不限" : `${q.used}/${q.limit}`}
       </span>
     </div>

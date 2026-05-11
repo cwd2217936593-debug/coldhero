@@ -1,6 +1,5 @@
 import { api } from "@/api/client";
-import { getExternalApiOrigin, shouldChatStreamHitRealBackend } from "@/lib/deepseekBridge";
-import { useAuthStore } from "@/store/authStore";
+import { getExternalApiOrigin, getTokenForChatGate, shouldChatStreamHitRealBackend } from "@/lib/deepseekBridge";
 import type { ApiResp, ChatLog, SessionSummary } from "@/api/types";
 
 export async function listSessions(): Promise<SessionSummary[]> {
@@ -30,7 +29,8 @@ export interface AskOptions {
 }
 
 /**
- * 流式问答（手写 fetch + ReadableStream，自带 token；不依赖 EventSource）
+ * 流式接口始终直连 VITE_API_BASE_URL（混合模式），避免经 Vite 反代时部分环境下 SSE 被缓冲/截断。
+ * 后端 APP_CORS_ORIGINS 须包含当前页面来源（localhost / 127.0.0.1 及端口）。
  */
 function chatStreamEndpoint(): string {
   if (shouldChatStreamHitRealBackend()) {
@@ -41,7 +41,13 @@ function chatStreamEndpoint(): string {
 }
 
 export async function askStream(opts: AskOptions): Promise<void> {
-  const token = useAuthStore.getState().token;
+  const token = getTokenForChatGate();
+  if (shouldChatStreamHitRealBackend() && token?.startsWith("mock.")) {
+    opts.onError?.(
+      "混合模式需要真实登录：请点击「退出登录」，再用管理员账号登录以获取 JWT（勿使用仅 Mock 登录留下的 token）。",
+    );
+    return;
+  }
   const res = await fetch(chatStreamEndpoint(), {
     method: "POST",
     headers: {
