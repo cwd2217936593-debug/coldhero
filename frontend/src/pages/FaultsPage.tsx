@@ -72,14 +72,15 @@ export default function FaultsPage() {
 
   return (
     <div className="space-y-4">
-      <header className="flex items-center justify-between">
-        <div>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <h2 className="text-lg font-semibold text-slate-800">故障报告</h2>
           <p className="text-sm text-slate-500">提交故障 → AI 立即给出初步分析 → 人工确认与处理。</p>
         </div>
         <button
+          type="button"
           onClick={() => setShowSubmit((v) => !v)}
-          className="px-3 py-2 text-sm rounded-md bg-brand-600 hover:bg-brand-700 text-white"
+          className="shrink-0 rounded-md bg-brand-600 px-3 py-2 text-sm text-white hover:bg-brand-700 sm:self-start"
         >{showSubmit ? "收起表单" : "+ 提交故障"}</button>
       </header>
 
@@ -114,7 +115,7 @@ export default function FaultsPage() {
             onChange={(e) => setKeyword(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && (setPage(1), refresh())}
             placeholder="标题或描述包含…"
-            className="text-sm border-slate-300 rounded-md w-48"
+            className="w-full rounded-md border-slate-300 text-sm sm:w-48"
           />
         </Filter>
         {isAdmin && (
@@ -127,22 +128,23 @@ export default function FaultsPage() {
         <button onClick={() => { setPage(1); refresh(); }} className="text-sm px-3 py-1.5 rounded-md border border-slate-300 hover:bg-slate-50">刷新</button>
       </div>
 
-      {/* 列表 */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-slate-600 text-xs">
+      {/* 列表：小屏横向滚动，避免列被压扁导致标签一字一行 */}
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="overflow-x-auto overscroll-x-contain">
+          <table className="min-w-[720px] w-full border-collapse text-sm">
+          <thead className="bg-slate-50 text-xs text-slate-600 whitespace-nowrap">
             <tr>
-              <th className="px-4 py-2 text-left w-14">#</th>
-              <th className="px-4 py-2 text-left">标题</th>
-              <th className="px-4 py-2 text-left w-28">类型</th>
-              <th className="px-4 py-2 text-left w-32">库区</th>
-              <th className="px-4 py-2 text-left w-24">严重</th>
-              <th className="px-4 py-2 text-left w-24">状态</th>
-              <th className="px-4 py-2 text-left w-40">提交时间</th>
-              <th className="px-4 py-2 text-left w-16">AI</th>
+              <th className="w-14 px-4 py-2 text-left">#</th>
+              <th className="min-w-[10rem] px-4 py-2 text-left">标题</th>
+              <th className="px-4 py-2 text-left">类型</th>
+              <th className="px-4 py-2 text-left">库区</th>
+              <th className="px-4 py-2 text-left whitespace-nowrap">严重</th>
+              <th className="px-4 py-2 text-left whitespace-nowrap">状态</th>
+              <th className="px-4 py-2 text-left whitespace-nowrap">提交时间</th>
+              <th className="px-4 py-2 text-center whitespace-nowrap w-14">AI</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="align-middle">
             {loading && items.length === 0 && (
               <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-400">加载中…</td></tr>
             )}
@@ -160,33 +162,34 @@ export default function FaultsPage() {
               >
                 <td className="px-4 py-2 font-mono text-xs text-slate-500">{r.id}</td>
                 <td className="px-4 py-2">
-                  <div className="text-slate-800 truncate max-w-md">{r.title}</div>
-                  <div className="text-xs text-slate-400 truncate max-w-md">{r.description}</div>
+                  <div className="max-w-[28rem] truncate text-slate-800">{r.title}</div>
+                  <div className="max-w-[28rem] truncate text-xs text-slate-400">{r.description}</div>
                 </td>
-                <td className="px-4 py-2 text-slate-700">{r.faultType}</td>
-                <td className="px-4 py-2">
+                <td className="whitespace-nowrap px-4 py-2 text-slate-700">{r.faultType}</td>
+                <td className="whitespace-nowrap px-4 py-2">
                   {r.zoneCode ? <span className="font-mono text-xs">{r.zoneCode}</span> : <span className="text-slate-300">—</span>}
                 </td>
-                <td className="px-4 py-2"><SeverityPill value={r.severity} /></td>
-                <td className="px-4 py-2"><StatusPill value={r.status} /></td>
-                <td className="px-4 py-2 text-slate-500 text-xs">{dayjs(r.createdAt).format("MM-DD HH:mm")}</td>
-                <td className="px-4 py-2 text-center">
+                <td className="whitespace-nowrap px-4 py-2"><SeverityPill value={r.severity} /></td>
+                <td className="whitespace-nowrap px-4 py-2"><StatusPill value={r.status} /></td>
+                <td className="whitespace-nowrap px-4 py-2 text-xs text-slate-500">{dayjs(r.createdAt).format("MM-DD HH:mm")}</td>
+                <td className="whitespace-nowrap px-4 py-2 text-center">
                   {r.aiAnalysis ? <span className="text-emerald-600">✓</span> : <span className="text-slate-300 text-xs">分析中</span>}
                 </td>
               </tr>
             ))}
-          </tbody>
+        </tbody>
         </table>
+        </div>
 
         {/* 分页 */}
-        <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50/50 text-xs text-slate-500">
+        <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/50 px-4 py-3 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
           <div>共 {total} 条</div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}
-              className="px-2 py-1 rounded hover:bg-slate-200 disabled:opacity-40">上一页</button>
-            <span>{page} / {totalPages}</span>
-            <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
-              className="px-2 py-1 rounded hover:bg-slate-200 disabled:opacity-40">下一页</button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button type="button" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}
+              className="rounded px-2 py-1 hover:bg-slate-200 disabled:opacity-40">上一页</button>
+            <span className="tabular-nums">{page} / {totalPages}</span>
+            <button type="button" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
+              className="rounded px-2 py-1 hover:bg-slate-200 disabled:opacity-40">下一页</button>
           </div>
         </div>
       </div>
