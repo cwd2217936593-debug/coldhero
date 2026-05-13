@@ -6,6 +6,7 @@ import { deleteReport, getReport, listReports, STATUS_META, submitReport, TYPE_L
 import { listZones } from "@/api/sensors";
 import { useAuthStore } from "@/store/authStore";
 import { getMyPlan } from "@/api/auth";
+import { publicAssetUrl } from "@/lib/publicAssetUrl";
 import type { GeneratedReport, MemberPlan, ReportFormat, ReportType, Zone } from "@/api/types";
 
 const TYPES: ReportType[] = ["daily", "weekly", "latest"];
@@ -201,8 +202,8 @@ export default function ReportsPage() {
                 <td className="px-4 py-2">
                   {r.status === "done" ? (
                     <div className="flex items-center gap-2">
-                      {r.fileUrlPdf && <a className="text-xs px-2 py-0.5 rounded bg-rose-100 text-rose-700 hover:bg-rose-200" href={r.fileUrlPdf} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>PDF</a>}
-                      {r.fileUrlDocx && <a className="text-xs px-2 py-0.5 rounded bg-sky-100 text-sky-700 hover:bg-sky-200" href={r.fileUrlDocx} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Word</a>}
+                      {r.fileUrlPdf && <a className="text-xs px-2 py-0.5 rounded bg-rose-100 text-rose-700 hover:bg-rose-200" href={publicAssetUrl(r.fileUrlPdf)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>PDF</a>}
+                      {r.fileUrlDocx && <a className="text-xs px-2 py-0.5 rounded bg-sky-100 text-sky-700 hover:bg-sky-200" href={publicAssetUrl(r.fileUrlDocx)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>Word</a>}
                     </div>
                   ) : <span className="text-xs text-slate-300">—</span>}
                 </td>
@@ -298,8 +299,8 @@ function ReportDetail({ report, onClose }: { report: GeneratedReport; onClose: (
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {report.fileUrlPdf && <a href={report.fileUrlPdf} target="_blank" rel="noreferrer" className="text-xs px-2 py-1 rounded bg-rose-600 text-white hover:bg-rose-700">下载 PDF</a>}
-          {report.fileUrlDocx && <a href={report.fileUrlDocx} target="_blank" rel="noreferrer" className="text-xs px-2 py-1 rounded bg-sky-600 text-white hover:bg-sky-700">下载 Word</a>}
+          {report.fileUrlPdf && <a href={publicAssetUrl(report.fileUrlPdf)} target="_blank" rel="noreferrer" className="text-xs px-2 py-1 rounded bg-rose-600 text-white hover:bg-rose-700">下载 PDF</a>}
+          {report.fileUrlDocx && <a href={publicAssetUrl(report.fileUrlDocx)} target="_blank" rel="noreferrer" className="text-xs px-2 py-1 rounded bg-sky-600 text-white hover:bg-sky-700">下载 Word</a>}
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-sm">关闭</button>
         </div>
       </div>

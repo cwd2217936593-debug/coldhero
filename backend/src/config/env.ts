@@ -6,6 +6,7 @@
  * - 其它模块统一从 `env` 对象获取配置，避免散落 process.env
  */
 
+import path from "node:path";
 import "dotenv/config";
 import { z } from "zod";
 
@@ -53,8 +54,8 @@ const schema = z.object({
   RATE_LIMIT_TIMEZONE: z.string().default("Asia/Shanghai"),
   QUEUE_CONCURRENCY: z.coerce.number().int().default(2),
 
-  /** 预测 CSV 兜底目录，文件名 = {zone_code}.csv */
-  FORECAST_CSV_DIR: z.string().default("/app/storage/forecasts"),
+  /** 预测 CSV 兜底目录，文件名 = {zone_code}.csv（默认相对后端进程工作目录，Docker WORKDIR=/app 时等同 /app/storage/forecasts） */
+  FORECAST_CSV_DIR: z.string().default(() => path.resolve(process.cwd(), "storage/forecasts")),
   /** 可选：Python 预测微服务（FastAPI 等），为空时仅使用 CSV */
   PYTHON_FORECAST_URL: z.string().optional().default(""),
 

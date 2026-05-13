@@ -23,7 +23,6 @@ export async function uploadFaultImages(files: File[]): Promise<FaultImage[]> {
   const r = await api.post<ApiResp<{ uploads: FaultImage[]; backend: "oss" | "local" }>>(
     "/fault-reports/uploads",
     fd,
-    { headers: { "Content-Type": "multipart/form-data" } },
   );
   return r.data.data.uploads;
 }

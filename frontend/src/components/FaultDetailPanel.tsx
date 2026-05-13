@@ -6,6 +6,7 @@ import {
   reanalyzeFaultReport,
 } from "@/api/fault";
 import { errMessage } from "@/api/client";
+import { publicAssetUrl } from "@/lib/publicAssetUrl";
 import { useAuthStore } from "@/store/authStore";
 import { SeverityPill, StatusPill } from "@/components/FaultBadges";
 import type { FaultReport, FaultSeverity, FaultStatus } from "@/api/types";
@@ -93,9 +94,9 @@ export default function FaultDetailPanel({ report, onUpdated, onClose }: Props) 
               <h4 className="text-xs text-slate-500 mb-1">现场照片（{report.imageUrls.length}）</h4>
               <div className="grid grid-cols-3 gap-2">
                 {report.imageUrls.map((img) => (
-                  <a key={img.key} href={img.url} target="_blank" rel="noreferrer"
+                  <a key={img.key} href={publicAssetUrl(img.url)} target="_blank" rel="noreferrer"
                      className="aspect-square rounded-md overflow-hidden border border-slate-200 group block">
-                    <img src={img.url} alt="" className="w-full h-full object-cover group-hover:scale-105 transition" />
+                    <img src={publicAssetUrl(img.url)} alt="" className="w-full h-full object-cover group-hover:scale-105 transition" />
                   </a>
                 ))}
               </div>

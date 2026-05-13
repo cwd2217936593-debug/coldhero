@@ -19,6 +19,8 @@ RUN npm run build
 FROM node:20-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
 
 # 仅装生产依赖
 COPY package.json ./

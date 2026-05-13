@@ -76,6 +76,18 @@ services:
       - ./backend/storage/forecasts:/app/storage/forecasts
       - ./backend/storage/uploads:/app/storage/uploads
       - ./backend/storage/fonts:/app/storage/fonts
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://127.0.0.1:4000/api/health',(r)=>{r.resume();r.on('end',()=>process.exit(r.statusCode===200?0:1))}).on('error',()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     networks:
       - coldhero-net
 
@@ -89,7 +101,8 @@ services:
     ports:
       - "5173:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - coldhero-net
 

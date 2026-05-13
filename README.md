@@ -85,7 +85,13 @@ docker compose up -d --build
 - 拉起 Redis 7（端口 6379）
 - 自动执行 `database/init/*.sql` 建表 + 写入种子数据
 - 构建并启动后端（端口 4000）
-- 构建并启动前端（端口 **5173**，nginx 反代 `/api` 与 `/ws`）
+- 构建并启动前端（端口 **5173**，nginx 反代 `/api`、`/ws` 与 **`/uploads/`**（本地存储文件））
+
+**单机 ECS / 生产部署（阿里云等）：** 安全组、`.env`、HTTPS、OSS 与运维要点见 **[docs/deploy-aliyun-ecs.md](docs/deploy-aliyun-ecs.md)**。
+
+**不能使用 Docker / Compose 时：** 在 Linux 上安装 MySQL、Redis、Nginx + Node 的安装与 systemd/Nginx 示例见 **[docs/deploy-native-linux.md](docs/deploy-native-linux.md)**。
+
+**正式环境推荐（同源域名：`https://app.你的域名` + ECS Nginx，GitHub 发版、Vercel 仅预览）：** **[docs/deploy-same-origin-production.md](docs/deploy-same-origin-production.md)**（默认 **`frontend/.env.production`** 关闭 Mock；宿主 Nginx 示例见 **`docs/nginx-app.example.conf`**）。
 
 健康检查：
 

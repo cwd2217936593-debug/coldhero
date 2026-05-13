@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { listZones } from "@/api/sensors";
 import { submitFaultReport, uploadFaultImages } from "@/api/fault";
 import { errMessage } from "@/api/client";
+import { publicAssetUrl } from "@/lib/publicAssetUrl";
 import { FAULT_TYPES } from "@/api/types";
 import type { FaultImage, FaultReport, FaultSeverity, Zone } from "@/api/types";
 
@@ -174,7 +175,7 @@ export default function FaultSubmitForm({ onCreated, onCancel }: Props) {
             ))}
             {uploadedImages.map((img) => (
               <div key={img.key} className="relative aspect-square rounded-md overflow-hidden border border-slate-200">
-                <img src={img.url} alt="" className="w-full h-full object-cover" />
+                <img src={publicAssetUrl(img.url)} alt="" className="w-full h-full object-cover" />
                 <button
                   onClick={() => removeImage(img.key)}
                   className="absolute top-1 right-1 bg-black/55 hover:bg-black/75 text-white text-[10px] rounded px-1.5 py-0.5"

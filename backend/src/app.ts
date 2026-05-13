@@ -5,6 +5,7 @@
  */
 
 import express from "express";
+import type { RequestHandler } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
@@ -16,11 +17,22 @@ import { apiRouter } from "@/routes";
 import { errorHandler, notFoundHandler } from "@/middlewares/errorHandler";
 import { getLocalStorageRootIfAny } from "@/services/storage";
 
+/** Express 默认仅 application/json；显式 charset 避免反代/客户端误用本地代码页解析中文 */
+const ensureJsonUtf8Charset: RequestHandler = (_req, res, next) => {
+  const origJson = res.json.bind(res);
+  res.json = (body: unknown) => {
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    return origJson(body);
+  };
+  next();
+};
+
 export function createApp() {
   const app = express();
 
   app.disable("x-powered-by");
   app.set("trust proxy", true);
+  app.use(ensureJsonUtf8Charset);
 
   app.use(
     helmet({
