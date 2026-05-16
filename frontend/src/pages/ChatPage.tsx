@@ -259,6 +259,14 @@ export default function ChatPage() {
       )}
 
       <section className="flex min-h-0 flex-1 basis-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        {!isPro && (
+          <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-950 md:px-5">
+            当前账号非管理员：<strong className="font-semibold">AI 冷库助理</strong>仅限管理员调用后端大模型；
+            若发送消息将返回禁止访问。部署环境请确认 <code className="rounded bg-amber-100/80 px-1">backend/.env</code> 中{' '}
+            <code className="rounded bg-amber-100/80 px-1">AI_API_KEY</code> 有效且服务器可访问{' '}
+            <code className="rounded bg-amber-100/80 px-1">AI_BASE_URL</code>。
+          </div>
+        )}
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 px-4 py-3 md:gap-3 md:px-5">
           <div className="text-sm font-medium text-slate-800">AI 冷库助理</div>
           {immersive && (

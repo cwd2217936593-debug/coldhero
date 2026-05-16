@@ -18,6 +18,7 @@ import { closeMysql, pingMysql } from "@/db/mysql";
 import { closeRedis, pingRedis } from "@/db/redis";
 import { eventBus } from "@/realtime/eventBus";
 import { attachWsServer } from "@/realtime/wsServer";
+import { peekResolvedReportFontPath } from "@/modules/reports/reports.pdf";
 import { startReportWorker, stopReportWorker } from "@/modules/reports/reports.queue";
 
 async function bootstrap() {
@@ -34,6 +35,14 @@ async function bootstrap() {
     logger.info(
       `🚀 ${env.APP_NAME} listening on http://0.0.0.0:${env.APP_PORT} (ws path: /ws/sensors) [${env.APP_ENV}]`,
     );
+    const reportFont = peekResolvedReportFontPath();
+    if (reportFont) {
+      logger.info({ fontPath: reportFont }, "报告 PDF：中文字体已就绪");
+    } else {
+      logger.warn(
+        "报告 PDF：未检测到中文字体，首次导出将失败。请将 NotoSansSC-Regular.otf 等放入 storage/fonts/ 或设置 REPORT_FONT_PATH（详见 reports.pdf.ts 注释）。",
+      );
+    }
   });
 
   const shutdown = async (signal: string) => {

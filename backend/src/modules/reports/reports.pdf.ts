@@ -1,13 +1,13 @@
 /**
  * PDF 渲染器（pdfmake，无需 Chromium）
  * --------------------------------
- * pdfmake 默认字体不支持中文。这里用 pdfmake 的 vfs_fonts 风格注入"思源黑体/Noto Sans SC"。
- * 容器内字体文件可后续通过 OSS 拉取并缓存到本地；此处先用 PDFKit 自带 Helvetica 兜底，
- * 中文若无字体会以"□"显示。生产环境推荐：
- *   1) 把 NotoSansSC-Regular.otf 放到 backend/storage/fonts/
- *   2) 设置 env REPORT_FONT_PATH 指向它
+ * pdfmake 默认字体不支持中文。这里注入「思源黑体 / Noto Sans SC / Noto CJK」等可变字体路径。
  *
- * 同时为了保持依赖最小，本模块不依赖 vfs_fonts 这个数 MB 的包，而是按需从磁盘加载。
+ * 生产推荐（任选其一）：
+ *   1) 将任意可用的 .otf / .ttf / .ttc 中文字体放到 backend/storage/fonts/（文件名不限，会自动扫描并优先常用名）
+ *   2) 设置 env REPORT_FONT_PATH 指向绝对路径
+ *
+ * 不引入 vfs_fonts 大包，按需从磁盘加载。
  */
 
 import fs from "node:fs";
@@ -34,40 +34,96 @@ type PdfDoc = {
 // 字体加载
 // =============================================================
 
-const FONT_CANDIDATES = [
-  env.REPORT_FONT_PATH,
-  path.resolve(process.cwd(), "storage/fonts/NotoSansSC-Regular.otf"),
-  path.resolve(process.cwd(), "storage/fonts/SourceHanSansCN-Regular.otf"),
+/** 扫描 storage/fonts：任意后缀为 otf/ttf/ttc 的字体都会参与候选（按优先级排序） */
+function discoverStorageFonts(): string[] {
+  const dir = path.resolve(process.cwd(), "storage/fonts");
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const scored: { score: number; full: string }[] = [];
+  for (const e of entries) {
+    if (!e.isFile()) continue;
+    const name = e.name.toLowerCase();
+    if (!/\.(otf|ttf|ttc)$/.test(name)) continue;
+    const full = path.join(dir, e.name);
+    let score = 90;
+    if (name.includes("notosanssc") || name.includes("noto_sans_sc")) score = 0;
+    else if (name.includes("notosanscjk") || name.includes("noto_sans_cjk")) score = 1;
+    else if (name.includes("sourcehansans") || name.includes("source_han_sans")) score = 2;
+    else if (name.includes("sourcehan") || name.includes("source_han")) score = 3;
+    else if (name.includes("wqy") || name.includes("microhei")) score = 10;
+    else if (name.includes("droidsansfallback") || (name.includes("droid") && name.includes("fallback"))) score = 20;
+    else if (name.includes("noto")) score = 30;
+    else if (name.includes("song") || name.includes("kai") || name.includes("fang") || name.includes("hei")) score = 70;
+    scored.push({ score, full });
+  }
+  scored.sort((a, b) => a.score - b.score || a.full.localeCompare(b.full));
+  return scored.map((s) => s.full);
+}
+
+/** 不包含 DejaVu 等「仅有拉丁文字形」的字体，避免误判为可用导致 PDF 中方块乱码却不报错 */
+function buildFontCandidates(): string[] {
+  const list: string[] = [];
+  const add = (p?: string) => {
+    const t = (p ?? "").trim();
+    if (t && !list.includes(t)) list.push(t);
+  };
+
+  add(env.REPORT_FONT_PATH);
+  for (const p of discoverStorageFonts()) add(p);
+
+  add(path.resolve(process.cwd(), "storage/fonts/NotoSansSC-Regular.otf"));
+  add(path.resolve(process.cwd(), "storage/fonts/SourceHanSansCN-Regular.otf"));
+
   // Windows 内置
-  "C:/Windows/Fonts/msyh.ttc",
-  "C:/Windows/Fonts/simhei.ttf",
-  // Linux 常见
-  "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-  "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-];
+  add("C:/Windows/Fonts/msyh.ttc");
+  add("C:/Windows/Fonts/msyhbd.ttc");
+  add("C:/Windows/Fonts/simhei.ttf");
+  add("C:/Windows/Fonts/simsun.ttc");
 
-let _printer: PdfPrinter | null = null;
+  // Linux / 宝塔常见：wqy-noto、droid fallback、各发行版 Noto CJK 路径
+  add("/usr/share/fonts/truetype/wqy/wqy-microhei.ttc");
+  add("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc");
+  add("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc");
+  add("/usr/share/fonts/opentype/noto/NotoSansCJKsc-Regular.otf");
+  add("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc");
+  add("/usr/share/fonts/truetype/noto/NotoSansCJKsc-Regular.otf");
+  add("/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc");
+  add("/usr/share/fonts/google-noto-cjk-vf/NotoSansCJKsc-VF.ttf");
+  add("/usr/share/fonts/chinese/SourceHanSansSC-Regular.otf");
+  add("/usr/share/fonts/truetype/arphic/uming.ttc");
 
-function resolveFontPath(): string | null {
-  for (const p of FONT_CANDIDATES) {
+  return list;
+}
+
+/** 启动时自检：不向 pdfmake 注册，仅供日志与其它模块预览 */
+export function peekResolvedReportFontPath(): string | null {
+  for (const p of buildFontCandidates()) {
     if (p && fs.existsSync(p)) return p;
   }
   return null;
 }
 
+let _printer: PdfPrinter | null = null;
+
 function getPrinter(): PdfPrinter {
   if (_printer) return _printer;
-  const fontPath = resolveFontPath();
+  const fontPath = peekResolvedReportFontPath();
   if (fontPath) {
     logger.info({ fontPath }, "📄 PDF 字体已加载");
     _printer = new PdfPrinter({
       ZH: { normal: fontPath, bold: fontPath, italics: fontPath, bolditalics: fontPath },
     });
   } else {
-    logger.warn("⚠️  未找到中文字体，将退回 Roboto，中文可能显示为方块。建议放置 NotoSansSC-Regular.otf 至 backend/storage/fonts/");
-    // pdfmake 自带 Roboto（在 vfs 中），但本项目不引入 vfs 包；
-    // 这里直接抛错由调用方处理，避免静默生成乱码 PDF
-    throw new Error("没有可用字体；请在 backend/storage/fonts/ 放置 NotoSansSC-Regular.otf 或设置 REPORT_FONT_PATH");
+    logger.warn(
+      "⚠️  未找到中文字体；请在 backend/storage/fonts/ 放置 .otf/.ttf/.ttc 任一中文字体，或设置 REPORT_FONT_PATH（勿依赖纯西文字体，否则将出现方块）。",
+    );
+    throw new Error(
+      "没有可用的中文字体；请将字体放入 backend/storage/fonts/（任意常见中文 .otf/.ttf/.ttc 文件名均可）或设置 REPORT_FONT_PATH 为绝对路径",
+    );
   }
   return _printer;
 }

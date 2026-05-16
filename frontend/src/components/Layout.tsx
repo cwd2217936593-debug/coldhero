@@ -61,7 +61,7 @@ export default function Layout() {
     };
   }, [mobileNavOpen]);
 
-  function logout() {
+  function switchAccount() {
     clear();
     nav("/login");
   }
@@ -80,7 +80,7 @@ export default function Layout() {
 
       <aside
         className={clsx(
-          "fixed inset-y-0 left-0 z-40 flex w-[min(17.5rem,88vw)] flex-col bg-slate-900 text-slate-100 shadow-xl transition-transform duration-200 ease-out lg:static lg:z-0 lg:w-60 lg:max-w-none lg:translate-x-0 lg:shadow-none",
+          "fixed inset-y-0 left-0 z-40 flex h-[100dvh] max-h-[100dvh] w-[min(17.5rem,88vw)] min-h-0 flex-col bg-slate-900 text-slate-100 shadow-xl transition-transform duration-200 ease-out lg:static lg:z-0 lg:h-[100dvh] lg:w-60 lg:max-w-none lg:translate-x-0 lg:shadow-none",
           mobileNavOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0",
         )}
       >
@@ -104,7 +104,7 @@ export default function Layout() {
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto overscroll-contain py-2">
+        <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-2">
           {NAV.map((n) => (
             <NavLink
               key={n.to}
@@ -129,16 +129,53 @@ export default function Layout() {
           ))}
         </nav>
 
-        <div className="flex-shrink-0 border-t border-slate-800 px-4 py-4 sm:px-5">
-          <div className="text-xs text-slate-400">当前账号</div>
-          <div className="truncate text-sm font-medium">{user?.displayName ?? user?.username}</div>
-          <div className="mt-0.5 text-[11px] text-brand-300">
-            {LEVEL_LABEL[user?.memberLevel ?? "free"]}
+        <div className="flex flex-shrink-0 flex-col gap-3 border-t border-slate-800 bg-slate-900 px-4 py-4 sm:px-5">
+          <div className="flex items-start gap-2.5">
+            <div
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-800 text-slate-300"
+              aria-hidden
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs text-slate-400">当前账号</div>
+              <div className="truncate text-sm font-medium">{user?.displayName ?? user?.username}</div>
+              <div className="mt-0.5 text-[11px] text-brand-300">
+                {LEVEL_LABEL[user?.memberLevel ?? "free"]}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={switchAccount}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-300 hover:bg-slate-800 hover:text-white"
+              title="切换账号"
+              aria-label="切换账号"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+                />
+              </svg>
+            </button>
           </div>
           <button
             type="button"
-            onClick={logout}
-            className="mt-3 w-full rounded bg-slate-800 py-1.5 text-xs text-slate-200 hover:bg-slate-700"
+            onClick={switchAccount}
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-800 py-2 text-xs font-medium text-slate-100 hover:bg-slate-700"
+          >
+            <svg className="h-4 w-4 shrink-0 opacity-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3" />
+            </svg>
+            切换账号
+          </button>
+          <button
+            type="button"
+            onClick={switchAccount}
+            className="w-full rounded-lg border border-slate-700 py-1.5 text-xs text-slate-300 hover:border-slate-600 hover:bg-slate-800/50"
           >
             退出登录
           </button>
@@ -163,6 +200,21 @@ export default function Layout() {
             </div>
           </div>
           <div className="flex w-full shrink-0 flex-wrap items-center justify-end gap-1.5 sm:w-auto sm:gap-3">
+            <button
+              type="button"
+              onClick={switchAccount}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+              title="切换账号"
+              aria-label="切换账号"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+                />
+              </svg>
+            </button>
             {quota && (
               <>
                 <QuotaPill label="AI 问答" q={quota.aiChat} />

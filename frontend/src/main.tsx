@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "@/App";
 import "@/index.css";
+import { repairPersistedAuthUserIfNeeded, useAuthStore } from "@/store/authStore";
 
 async function bootstrap() {
   // VITE_USE_MOCK=1 时启用前端 mock：拦截 axios + fetch + WebSocket，
@@ -10,6 +11,12 @@ async function bootstrap() {
   if (import.meta.env.VITE_USE_MOCK === "1") {
     await import("@/mock");
   }
+
+  useAuthStore.persist.onFinishHydration(() => {
+    repairPersistedAuthUserIfNeeded();
+  });
+  await useAuthStore.persist.rehydrate();
+  repairPersistedAuthUserIfNeeded();
 
   ReactDOM.createRoot(document.getElementById("root")!).render(
     <React.StrictMode>

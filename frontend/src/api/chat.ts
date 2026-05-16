@@ -66,8 +66,12 @@ export async function askStream(opts: AskOptions): Promise<void> {
     const text = await res.text().catch(() => "");
     let msg = text;
     try {
-      msg = JSON.parse(text)?.message ?? text;
-    } catch {/* ignore */}
+      const j = JSON.parse(text) as { message?: string; error?: string };
+      const m = typeof j.message === "string" ? j.message : typeof j.error === "string" ? j.error : "";
+      msg = m || text;
+    } catch {
+      /* 非 JSON 时沿用原文（如网关 HTML） */
+    }
     opts.onError?.(msg || `HTTP ${res.status}`);
     return;
   }
