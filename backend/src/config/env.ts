@@ -17,7 +17,10 @@ const schema = z.object({
   APP_CORS_ORIGINS: z.string().default("http://localhost:5173"),
 
   JWT_SECRET: z.string().min(16, "JWT_SECRET 至少 16 位"),
-  JWT_EXPIRES_IN: z.string().default("7d"),
+  /** Access Token TTL（建议使用「几小时」量级；长跑依赖 refresh_token） */
+  JWT_EXPIRES_IN: z.string().default("24h"),
+  /** Refresh Token 持久会话 TTL（建表：`refresh_tokens`） */
+  JWT_REFRESH_EXPIRES_IN: z.string().default("30d"),
 
   MYSQL_HOST: z.string().default("127.0.0.1"),
   MYSQL_PORT: z.coerce.number().int().default(3306),
@@ -63,6 +66,33 @@ const schema = z.object({
   REPORT_FONT_PATH: z.string().optional().default(""),
 
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
+
+  /** Step 3：每日 UTC+8 过小后打一次 rollover 日志（不写死清空 Redis，配额键仍以「自然日 KEY + TTL」为准） */
+  ENABLE_QUOTA_DAY_ROLLOVER: z
+    .string()
+    .optional()
+    .default("true")
+    .transform((s) => s.toLowerCase() !== "false"),
+
+  /** 管理员后台 P1 */
+  ADMIN_INIT_PASSWORD: z.string().min(8).default("Chang3Me!"),
+  /** 逗号分隔：禁止禁用 / 禁止后台降级的内置账号用户名（role=admin） */
+  ADMIN_IMMUTABLE_USERNAMES: z.string().default("admin"),
+  TEMP_ALERT_MIN: z.coerce.number().default(-25),
+  TEMP_ALERT_MAX: z.coerce.number().default(-10),
+  HUMIDITY_ALERT_MAX: z.coerce.number().default(85),
+
+  /** 字符串环境变量转布尔；未设置视为 false */
+  SMS_ENABLED: z
+    .string()
+    .optional()
+    .default("false")
+    .transform((s) => s.toLowerCase() === "true"),
+  ALIYUN_SMS_ACCESS_KEY: z.string().optional().default(""),
+  ALIYUN_SMS_SECRET: z.string().optional().default(""),
+  ALIYUN_SMS_SIGN_NAME: z.string().optional().default(""),
+  ALIYUN_SMS_TEMPLATE_CODE_ORDER: z.string().optional().default(""),
+  ALIYUN_SMS_TEMPLATE_CODE_EXPIRE: z.string().optional().default(""),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -75,6 +105,9 @@ if (!parsed.success) {
 
 export const env = Object.freeze({
   ...parsed.data,
+  immutableAdminUsernames: parsed.data.ADMIN_IMMUTABLE_USERNAMES.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
   /** 当前是否生产环境 */
   isProd: parsed.data.APP_ENV === "production",
   /** 解析后的 CORS 白名单数组 */

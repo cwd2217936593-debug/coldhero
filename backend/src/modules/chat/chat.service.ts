@@ -28,7 +28,7 @@ function resolveTier(requested: AiTier | undefined, level: MemberLevel, role?: U
   if (requested !== "pro") return "fast";
   // 管理员始终可用 pro（推理）模型；其它账号按会员等级
   if (role === "admin") return "pro";
-  return level === "pro" || level === "enterprise" ? "pro" : "fast";
+  return level === "professional" || level === "enterprise" ? "pro" : "fast";
 }
 
 async function buildMessages(

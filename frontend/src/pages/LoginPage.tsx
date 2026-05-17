@@ -50,7 +50,7 @@ export default function LoginPage() {
     setErr(null);
     try {
       const r = await login(identifier, password);
-      setAuth(r.token, r.user);
+      setAuth(r.token, r.user, r.refreshToken);
       nav("/dashboard", { replace: true });
     } catch (e2) {
       setErr(errMessage(e2));

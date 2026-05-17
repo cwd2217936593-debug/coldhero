@@ -10,6 +10,7 @@
     "start": "node dist/server.js",
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/middlewares/adminAuth.test.ts src/jobs/quotaDayRollover.test.ts",
     "seed:passwords": "tsx src/scripts/seedPasswords.ts",
     "mock:sensors": "tsx src/scripts/mockSensors.ts",
     "gen:forecasts": "tsx src/scripts/generateForecasts.ts"
@@ -53,5 +54,9 @@
   },
   "engines": {
     "node": ">=20"
-  }
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
 }

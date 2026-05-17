@@ -20,12 +20,18 @@ import { eventBus } from "@/realtime/eventBus";
 import { attachWsServer } from "@/realtime/wsServer";
 import { peekResolvedReportFontPath } from "@/modules/reports/reports.pdf";
 import { startReportWorker, stopReportWorker } from "@/modules/reports/reports.queue";
+import { startQuotaDayRolloverCron } from "@/jobs/quotaDayRollover";
+import { registerFaqMiningCronPlaceholder } from "@/jobs/faqMining";
+import { registerMemberExpireCronPlaceholder } from "@/jobs/memberExpire";
 
 async function bootstrap() {
   await pingMysql();
   await pingRedis();
   await eventBus.start();
   startReportWorker();
+  const stopQuotaDayRollover = startQuotaDayRolloverCron();
+  const stopFaqMiningPlaceholder = registerFaqMiningCronPlaceholder();
+  const stopMemberExpirePlaceholder = registerMemberExpireCronPlaceholder();
 
   const app = createApp();
   const server = http.createServer(app);
@@ -49,6 +55,9 @@ async function bootstrap() {
     logger.info({ signal }, "收到退出信号，开始优雅关闭");
     server.close(async () => {
       await stopReportWorker();
+      stopQuotaDayRollover();
+      stopFaqMiningPlaceholder();
+      stopMemberExpirePlaceholder();
       await eventBus.stop();
       await closeMysql();
       await closeRedis();

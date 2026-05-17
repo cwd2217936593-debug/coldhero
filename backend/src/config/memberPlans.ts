@@ -1,11 +1,18 @@
 /**
- * 会员等级配置
+ * 会员套餐视图（运行时代码友好字段名）
  * --------------------------------
- * 与产品文档一致，集中维护各等级的配额与权限，
- * 后续限流、报告生成、数据查询范围都从此处取值。
+ * 数值与权益以 `@/constants/memberLevels` 为唯一数据源，此处仅做映射，
+ * 供配额中间件、历史范围、报告队列等沿用既有 MemberPlan 形状。
+ *
+ * DB `member_level` 使用 `professional`；遗留 JWT 可能出现 `pro`，统一走 normalizeMemberLevel。
  */
 
-export type MemberLevel = "free" | "basic" | "pro" | "enterprise";
+import {
+  MEMBER_LEVEL_CONFIG,
+  type MemberLevel,
+} from "@/constants/memberLevels";
+
+export type { MemberLevel };
 
 export interface MemberPlan {
   level: MemberLevel;
@@ -17,51 +24,42 @@ export interface MemberPlan {
   historyRangeDays: number;
   /** 是否允许导出 Word */
   allowDocxExport: boolean;
-  /** 是否拥有报告优先生成权 */
+  /** 是否拥有报告优先生成权（与档位 autoDispatch 对齐） */
   priorityQueue: boolean;
-  /** 是否开放 API 接入 */
+  /** 是否开放 API 接入（reportFormats 含 api） */
   apiAccess: boolean;
 }
 
+function buildPlan(level: MemberLevel): MemberPlan {
+  const c = MEMBER_LEVEL_CONFIG[level];
+  const formats = c.reportFormats as readonly string[];
+  return {
+    level,
+    aiChatPerDay: c.aiChatDaily,
+    reportPerDay: c.reportDaily,
+    historyRangeDays: c.historyDays,
+    allowDocxExport: formats.includes("docx"),
+    priorityQueue: c.autoDispatch,
+    apiAccess: formats.includes("api"),
+  };
+}
+
 export const MEMBER_PLANS: Record<MemberLevel, MemberPlan> = {
-  free: {
-    level: "free",
-    aiChatPerDay: 5,
-    reportPerDay: 1,
-    historyRangeDays: 7,
-    allowDocxExport: false,
-    priorityQueue: false,
-    apiAccess: false,
-  },
-  basic: {
-    level: "basic",
-    aiChatPerDay: 30,
-    reportPerDay: 5,
-    historyRangeDays: 30,
-    allowDocxExport: true,
-    priorityQueue: false,
-    apiAccess: false,
-  },
-  pro: {
-    level: "pro",
-    aiChatPerDay: 100,
-    reportPerDay: 20,
-    historyRangeDays: 365,
-    allowDocxExport: true,
-    priorityQueue: true,
-    apiAccess: false,
-  },
-  enterprise: {
-    level: "enterprise",
-    aiChatPerDay: -1,
-    reportPerDay: -1,
-    historyRangeDays: -1,
-    allowDocxExport: true,
-    priorityQueue: true,
-    apiAccess: true,
-  },
+  free: buildPlan("free"),
+  basic: buildPlan("basic"),
+  professional: buildPlan("professional"),
+  enterprise: buildPlan("enterprise"),
 };
 
-export function getPlan(level: MemberLevel): MemberPlan {
-  return MEMBER_PLANS[level] ?? MEMBER_PLANS.free;
+/** 将 JWT / 外部遗留取值规范为 DB 与 MEMBER_LEVEL_CONFIG 使用的档位键 */
+export function normalizeMemberLevel(raw: string): MemberLevel {
+  if (raw === "pro") return "professional";
+  if (raw === "free" || raw === "basic" || raw === "professional" || raw === "enterprise") {
+    return raw;
+  }
+  return "free";
+}
+
+export function getPlan(level: MemberLevel | string): MemberPlan {
+  return MEMBER_PLANS[normalizeMemberLevel(String(level))] ?? MEMBER_PLANS.free;
 }

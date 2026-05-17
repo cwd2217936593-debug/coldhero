@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
 import ZoneCard from "@/components/ZoneCard";
@@ -6,15 +6,24 @@ import TemperatureChart, { pointsFromSensors } from "@/components/TemperatureCha
 import { listZoneSnapshots, getZoneSeries } from "@/api/sensors";
 import type { SensorPoint, Zone, ZoneSnapshot } from "@/api/types";
 import { useSensorWs } from "@/hooks/useSensorWs";
+import { mergeLatestPointIntoSeries } from "@/hooks/sensorSeriesMerge";
+import { useSensorSnapshotPolling } from "@/hooks/useSensorSnapshotPolling";
+import { useTimedSensorAlertBanner } from "@/hooks/useTimedSensorAlertBanner";
+import SensorAlertBanner, { sensorAlertTitle, sensorPointDigest } from "@/components/SensorAlertBanner";
 
 const MAX_LIVE_POINTS = 720; // 2h × (1 点/10s)
+const POLL_MS = 30_000;
 
 export default function DashboardPage() {
   const nav = useNavigate();
   const [snapshots, setSnapshots] = useState<ZoneSnapshot[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
   const [series, setSeries] = useState<SensorPoint[]>([]);
-  const [alert, setAlert] = useState<{ title: string; reasons: string[]; level: string; ts: number } | null>(null);
+  const { alert, show: showAlert, dismiss: dismissAlert } = useTimedSensorAlertBanner();
+  const [wsConnected, setWsConnected] = useState(false);
+  const selectedRef = useRef<number | null>(null);
+  const pollAlertDedupRef = useRef("");
+  selectedRef.current = selected;
 
   // 首次拉快照
   useEffect(() => {
@@ -26,7 +35,10 @@ export default function DashboardPage() {
         if (s.length && selected == null) setSelected(s[0].zone.id);
       })
       .catch(() => undefined);
-    return () => { live = false; };
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在挂载时跑一次
   }, []);
 
   // 选中库区的初始 2h 曲线
@@ -34,29 +46,70 @@ export default function DashboardPage() {
     if (selected == null) return;
     let live = true;
     getZoneSeries(selected, { window: "2h" })
-      .then((r) => { if (live) setSeries(r.points); })
+      .then((r) => {
+        if (live) setSeries(r.points);
+      })
       .catch(() => undefined);
-    return () => { live = false; };
+    return () => {
+      live = false;
+    };
   }, [selected]);
+
+  // WS 不可用时的 HTTP 30s 兜底：刷新库区卡片；向当前库区曲线对齐最新一点
+  useSensorSnapshotPolling({
+    intervalMs: POLL_MS,
+    paused: wsConnected,
+    fetcher: listZoneSnapshots,
+    onSuccess: (next) => {
+      setSnapshots(next);
+      const sid = selectedRef.current;
+      if (sid == null) return;
+      const row = next.find((x) => x.zone.id === sid);
+      if (!row?.latest) return;
+      setSeries((prev) => mergeLatestPointIntoSeries(prev, row.latest, MAX_LIVE_POINTS));
+    },
+  });
+
+  /** WebSocket 断线时依据 REST 快照里 isAnomaly 打一条条幅（服务端已入库站内信，此处补强可见性）。 */
+  useEffect(() => {
+    if (wsConnected) {
+      pollAlertDedupRef.current = "";
+      return;
+    }
+    const hit = snapshots.find((s) => s.latest?.isAnomaly);
+    if (!hit?.latest?.isAnomaly) return;
+    const key = `${hit.zone.id}:${hit.latest.recordedAt}`;
+    if (pollAlertDedupRef.current === key) return;
+    pollAlertDedupRef.current = key;
+    showAlert({
+      title: sensorAlertTitle(hit.zone.name, hit.zone.code, "critical"),
+      reasons: [
+        "WebSocket 未连接时由 HTTP 兜底发现异常标记；请以「通知中心」记录为准，并检查网络或服务状态。",
+        sensorPointDigest(hit.latest),
+      ],
+      level: "critical",
+      channel: "fallback",
+    });
+  }, [wsConnected, snapshots, showAlert]);
 
   // 实时推送
   useSensorWs({
+    onConnectionChange: setWsConnected,
     onSensor: (e) => {
-      // 更新对应 snapshot
       setSnapshots((prev) =>
         prev.map((s) => (s.zone.id === e.zoneId ? { ...s, latest: e.data } : s)),
       );
-      if (e.zoneId === selected) {
-        setSeries((prev) => {
-          const next = [...prev, e.data];
-          if (next.length > MAX_LIVE_POINTS) next.splice(0, next.length - MAX_LIVE_POINTS);
-          return next;
-        });
+      if (e.zoneId === selectedRef.current) {
+        setSeries((prev) => mergeLatestPointIntoSeries(prev, e.data, MAX_LIVE_POINTS));
       }
     },
     onAlert: (e) => {
-      setAlert({ title: `${e.zoneName}（${e.zoneCode}）${labelLevel(e.level)}`, reasons: e.reasons, level: e.level, ts: Date.now() });
-      setTimeout(() => setAlert((a) => (a && Date.now() - a.ts > 8000 ? null : a)), 9000);
+      showAlert({
+        title: sensorAlertTitle(e.zoneName, e.zoneCode, e.level),
+        reasons: e.reasons.length ? e.reasons : [sensorPointDigest(e.data)],
+        level: e.level,
+        channel: "live",
+      });
     },
   });
 
@@ -66,24 +119,29 @@ export default function DashboardPage() {
   );
   const chartPoints = useMemo(() => pointsFromSensors(series), [series]);
 
+  const linkHint = wsConnected
+    ? "实时 WebSocket，已启用"
+    : `WebSocket 未连接 · HTTP 每 ${POLL_MS / 1000}s 兜底刷新`;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-3">
         <h1 className="text-xl font-semibold text-slate-900">实时仪表盘</h1>
-        <span className="text-xs text-slate-500">实时 WebSocket · 当前 {snapshots.length} 个库区</span>
+        <span className="text-xs text-slate-500">
+          {linkHint} · 当前 {snapshots.length} 个库区
+        </span>
       </div>
 
-      {alert && (
-        <div className={`rounded-lg border px-4 py-3 text-sm flex items-start gap-3
-          ${alert.level === "critical" ? "bg-rose-50 border-rose-200 text-rose-800" : "bg-amber-50 border-amber-200 text-amber-800"}`}>
-          <span className="text-lg leading-none">⚠️</span>
-          <div className="flex-1">
-            <div className="font-medium">{alert.title}</div>
-            <div className="mt-0.5 text-xs">{alert.reasons.join("；")}</div>
-          </div>
-          <button onClick={() => setAlert(null)} className="text-xs opacity-60 hover:opacity-100">关闭</button>
-        </div>
-      )}
+      {alert ? (
+        <SensorAlertBanner
+          title={alert.title}
+          reasons={alert.reasons}
+          level={alert.level}
+          channel={alert.channel}
+          notificationsTo="/notifications"
+          onDismiss={dismissAlert}
+        />
+      ) : null}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {snapshots.map((s) => (
@@ -104,7 +162,7 @@ export default function DashboardPage() {
               {selectedZone ? `${selectedZone.code} · ${selectedZone.name}` : "请选择库区"}
             </div>
             <div className="text-[11px] leading-relaxed text-slate-400">
-              最近 2 小时温度（红虚线 = 阈值；新数据由 WebSocket 实时追加）
+              最近 2 小时温度（红虚线 = 阈值；优先 WebSocket 追加，离线时由兜底轮询补点）
               {series.length > 0 && ` · 共 ${series.length} 个数据点`}
             </div>
           </div>
@@ -120,14 +178,12 @@ export default function DashboardPage() {
         <TemperatureChart zone={selectedZone} points={chartPoints} />
         <div className="text-[11px] text-slate-400 mt-2">
           数据生成时间区间：
-          {series[0]?.recordedAt ? dayjs(series[0].recordedAt).format("HH:mm:ss") : "—"} ~ {" "}
-          {series[series.length - 1]?.recordedAt ? dayjs(series[series.length - 1].recordedAt).format("HH:mm:ss") : "—"}
+          {series[0]?.recordedAt ? dayjs(series[0].recordedAt).format("HH:mm:ss") : "—"} ~{" "}
+          {series[series.length - 1]?.recordedAt
+            ? dayjs(series[series.length - 1].recordedAt).format("HH:mm:ss")
+            : "—"}
         </div>
       </div>
     </div>
   );
-}
-
-function labelLevel(l: string): string {
-  return l === "critical" ? "出现严重异常" : l === "warning" ? "出现异常" : "提示";
 }

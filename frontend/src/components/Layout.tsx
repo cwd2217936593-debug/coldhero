@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import clsx from "clsx";
 import { useAuthStore } from "@/store/authStore";
-import { getMyQuota } from "@/api/auth";
+import { getMyPlan, getMyQuota } from "@/api/auth";
+import { logout } from "@/api/session";
 import { unreadCount } from "@/api/notifications";
-import type { QuotaState } from "@/api/types";
+import type { MemberPlan, QuotaState } from "@/api/types";
 
 const NAV = [
   { to: "/dashboard",    label: "实时仪表盘", icon: "📊" },
@@ -26,12 +27,31 @@ const LEVEL_LABEL: Record<string, string> = {
 
 export default function Layout() {
   const user = useAuthStore((s) => s.user);
-  const clear = useAuthStore((s) => s.clear);
   const nav = useNavigate();
   const location = useLocation();
   const [quota, setQuota] = useState<{ aiChat: QuotaState; report: QuotaState } | null>(null);
+  const [plan, setPlan] = useState<MemberPlan | null>(null);
   const [unread, setUnread] = useState(0);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  const navItems = [
+    ...NAV,
+    ...(user?.role === "admin" || user?.role === "operator"
+      ? [{ to: "/admin/monitor", label: "管理后台", icon: "🛡️" }]
+      : []),
+  ];
+
+  useEffect(() => {
+    let live = true;
+    getMyPlan()
+      .then((p) => {
+        if (live) setPlan(p);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, []);
 
   useEffect(() => {
     let live = true;
@@ -61,8 +81,8 @@ export default function Layout() {
     };
   }, [mobileNavOpen]);
 
-  function switchAccount() {
-    clear();
+  async function switchAccount() {
+    await logout();
     nav("/login");
   }
 
@@ -105,7 +125,7 @@ export default function Layout() {
         </div>
 
         <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-2">
-          {NAV.map((n) => (
+          {navItems.map((n) => (
             <NavLink
               key={n.to}
               to={n.to}
@@ -143,7 +163,7 @@ export default function Layout() {
               <div className="text-xs text-slate-400">当前账号</div>
               <div className="truncate text-sm font-medium">{user?.displayName ?? user?.username}</div>
               <div className="mt-0.5 text-[11px] text-brand-300">
-                {LEVEL_LABEL[user?.memberLevel ?? "free"]}
+                {LEVEL_LABEL[plan?.level ?? "free"]}
               </div>
             </div>
             <button

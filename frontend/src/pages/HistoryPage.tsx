@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import ReactECharts from "echarts-for-react";
 import dayjs from "dayjs";
@@ -16,6 +16,9 @@ const RANGES = [
   { label: "近 7 天",    hours: 168 },
 ];
 
+/** 历史查询与 `/compare`（README 阶段 6）；定时将时间窗对齐到「当前时刻」并静默刷新图表 */
+const POLL_MS = 60_000;
+
 export default function HistoryPage() {
   const [params, setParams] = useSearchParams();
   const [zones, setZones] = useState<Zone[]>([]);
@@ -23,7 +26,19 @@ export default function HistoryPage() {
   const [hours, setHours] = useState(24);
   const [data, setData] = useState<CompareResp | null>(null);
   const [loading, setLoading] = useState(false);
+  const [bgBusy, setBgBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
+  const tabVisibleRef = useRef(true);
+
+  useEffect(() => {
+    const sync = () => {
+      tabVisibleRef.current = document.visibilityState === "visible";
+    };
+    sync();
+    document.addEventListener("visibilitychange", sync);
+    return () => document.removeEventListener("visibilitychange", sync);
+  }, []);
 
   useEffect(() => {
     listZones().then((zs) => {
@@ -33,18 +48,46 @@ export default function HistoryPage() {
     });
   }, []);
 
+  const loadCompare = useCallback(
+    async (mode: "full" | "quiet") => {
+      if (zoneId == null) return;
+      const quiet = mode === "quiet";
+      if (quiet) setBgBusy(true);
+      else {
+        setLoading(true);
+        setErr(null);
+      }
+      const to = new Date();
+      const from = new Date(to.getTime() - hours * 3600 * 1000);
+      try {
+        const r = await getZoneCompare(zoneId, { from: from.toISOString(), to: to.toISOString() });
+        setData(r);
+        setLastFetchedAt(new Date());
+        setErr(null);
+      } catch (e) {
+        if (!quiet) setErr(errMessage(e));
+      } finally {
+        if (quiet) setBgBusy(false);
+        else setLoading(false);
+      }
+    },
+    [zoneId, hours],
+  );
+
   useEffect(() => {
     if (zoneId == null) return;
-    setLoading(true);
-    setErr(null);
-    const to = new Date();
-    const from = new Date(to.getTime() - hours * 3600 * 1000);
-    getZoneCompare(zoneId, { from: from.toISOString(), to: to.toISOString() })
-      .then((r) => setData(r))
-      .catch((e) => setErr(errMessage(e)))
-      .finally(() => setLoading(false));
+    void loadCompare("full");
     setParams({ zoneId: String(zoneId) }, { replace: true });
-  }, [zoneId, hours]);
+  }, [zoneId, hours, loadCompare, setParams]);
+
+  useEffect(() => {
+    if (zoneId == null) return;
+    const id = window.setInterval(() => {
+      if (!tabVisibleRef.current) return;
+      void loadCompare("quiet");
+    }, POLL_MS);
+    return () => window.clearInterval(id);
+  }, [zoneId, loadCompare]);
 
   const zone = useMemo<Zone | null>(
     () => zones.find((z) => z.id === zoneId) ?? null,
@@ -56,7 +99,14 @@ export default function HistoryPage() {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold text-slate-900 mr-auto">历史查询与模型拟合</h1>
+        <div className="mr-auto flex min-w-0 flex-col gap-0.5">
+          <h1 className="text-xl font-semibold text-slate-900">历史查询与模型拟合</h1>
+          <span className="text-[11px] text-slate-500">
+            区间终点随每次加载对齐当前时间 · 前台可见时每 {POLL_MS / 1000}s 静默刷新 · 会员历史深度仍由服务端按档位裁剪
+            {lastFetchedAt ? ` · 上次更新 ${dayjs(lastFetchedAt).format("HH:mm:ss")}` : ""}
+            {bgBusy ? " · 刷新中…" : ""}
+          </span>
+        </div>
         <select
           className="text-sm border border-slate-300 rounded-md px-2 py-1.5 bg-white"
           value={zoneId ?? ""}
@@ -80,6 +130,14 @@ export default function HistoryPage() {
             </button>
           ))}
         </div>
+        <button
+          type="button"
+          disabled={loading || zoneId == null}
+          onClick={() => void loadCompare("full")}
+          className="rounded-md border border-slate-300 px-3 py-1.5 text-xs hover:bg-slate-50 disabled:opacity-50"
+        >
+          立即刷新
+        </button>
       </div>
 
       {data && (

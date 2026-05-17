@@ -16,6 +16,7 @@ import { chatRouter } from "@/modules/chat/chat.routes";
 import { faultsRouter } from "@/modules/fault/fault.routes";
 import { reportsRouter } from "@/modules/reports/reports.routes";
 import { surveysRouter } from "@/modules/surveys/survey.routes";
+import adminRouter from "@/routes/admin";
 
 export const apiRouter = Router();
 
@@ -29,3 +30,5 @@ apiRouter.use("/chat", chatRouter);
 apiRouter.use("/fault-reports", faultsRouter);
 apiRouter.use("/reports", reportsRouter);
 apiRouter.use("/surveys", surveysRouter);
+/** 管理员后台；完整路径 `/api/admin/*`（等同 app.use("/api", apiRouter) + use("/admin", …)） */
+apiRouter.use("/admin", adminRouter);

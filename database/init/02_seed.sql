@@ -12,7 +12,7 @@ INSERT INTO `users` (`username`, `email`, `password_hash`, `member_level`, `disp
   ('admin',     'admin@coldhero.local',     '$2b$10$8K1p/a0dURXAm7Q9jX7kEebI6sB5cE2Y0QjGn7hHj/8m4Rp8tZdGm', 'enterprise', '系统管理员',  'admin'),
   ('demo_free', 'free@coldhero.local',      '$2b$10$8K1p/a0dURXAm7Q9jX7kEebI6sB5cE2Y0QjGn7hHj/8m4Rp8tZdGm', 'free',       '免费用户',    'viewer'),
   ('demo_basic','basic@coldhero.local',     '$2b$10$8K1p/a0dURXAm7Q9jX7kEebI6sB5cE2Y0QjGn7hHj/8m4Rp8tZdGm', 'basic',      '基础用户',    'viewer'),
-  ('demo_pro',  'pro@coldhero.local',       '$2b$10$8K1p/a0dURXAm7Q9jX7kEebI6sB5cE2Y0QjGn7hHj/8m4Rp8tZdGm', 'pro',        '专业用户',    'operator'),
+  ('demo_pro',  'pro@coldhero.local',       '$2b$10$8K1p/a0dURXAm7Q9jX7kEebI6sB5cE2Y0QjGn7hHj/8m4Rp8tZdGm', 'professional','专业用户',    'operator'),
   ('demo_ent',  'enterprise@coldhero.local','$2b$10$8K1p/a0dURXAm7Q9jX7kEebI6sB5cE2Y0QjGn7hHj/8m4Rp8tZdGm', 'enterprise', '企业用户',    'operator');
 
 -- -------------------------------------------------------------

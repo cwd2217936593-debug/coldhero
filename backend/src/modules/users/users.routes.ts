@@ -32,7 +32,6 @@ usersRouter.get("/me/quota", requireAuth, async (req, res) => {
   res.json({
     success: true,
     data: {
-      memberLevel: req.user!.memberLevel,
       aiChat,
       report,
       timezone: "Asia/Shanghai",

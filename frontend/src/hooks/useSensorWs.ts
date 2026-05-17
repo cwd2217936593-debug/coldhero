@@ -23,18 +23,24 @@ interface Options {
   onSensor?: (e: SensorWsEvent) => void;
   onAlert?: (e: AlertWsEvent) => void;
   zoneIds?: number[];
+  /** WebSocket OPEN/CLOSE（重连间隙会先 false）；用于开启 HTTP 30s 兜底轮询 */
+  onConnectionChange?: (connected: boolean) => void;
 }
 
 /**
  * 维护一条 WebSocket 长连接：
  *  - JWT 走 query string
  *  - 自动重连（指数退避，max 30s）
- *  - 心跳由后端发起，前端被动 pong 即可（ws 库已自动处理）
+ *  - 服务端 ping / 前端浏览器自动 pong
  */
 export function useSensorWs(opts: Options) {
   const { onSensor, onAlert, zoneIds } = opts;
-  const optsRef = useRef({ onSensor, onAlert });
-  optsRef.current = { onSensor, onAlert };
+  const optsRef = useRef({ onSensor, onAlert, onConnectionChange: opts.onConnectionChange });
+  optsRef.current = {
+    onSensor,
+    onAlert,
+    onConnectionChange: opts.onConnectionChange,
+  };
 
   const token = useAuthStore((s) => s.token);
 
@@ -52,6 +58,7 @@ export function useSensorWs(opts: Options) {
 
       ws.onopen = () => {
         attempt = 0;
+        optsRef.current.onConnectionChange?.(true);
         if (zoneIds && zoneIds.length) {
           ws?.send(JSON.stringify({ type: "subscribe", zoneIds }));
         }
@@ -62,10 +69,13 @@ export function useSensorWs(opts: Options) {
           const data = JSON.parse(ev.data) as WsEvent;
           if (data.type === "sensor") optsRef.current.onSensor?.(data as SensorWsEvent);
           else if (data.type === "alert") optsRef.current.onAlert?.(data as AlertWsEvent);
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       };
 
       ws.onclose = () => {
+        optsRef.current.onConnectionChange?.(false);
         if (stopped) return;
         const delay = Math.min(1000 * Math.pow(2, attempt++), 30_000);
         timer = window.setTimeout(connect, delay);
@@ -79,6 +89,7 @@ export function useSensorWs(opts: Options) {
 
     return () => {
       stopped = true;
+      optsRef.current.onConnectionChange?.(false);
       if (timer) window.clearTimeout(timer);
       ws?.close();
     };

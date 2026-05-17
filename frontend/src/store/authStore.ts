@@ -12,8 +12,12 @@ function normalizeUserUnicode(u: User): User {
 
 interface AuthState {
   token: string | null;
+  /** 服务端 refresh_tokens 行对应明文（仅存浏览器） */
+  refreshToken: string | null;
   user: User | null;
-  setAuth: (token: string, user: User) => void;
+  setAuth: (token: string, user: User, refreshToken?: string | null) => void;
+  /** access 换新后补丁（保留原 refreshToken） */
+  patchAccess: (token: string, user: User) => void;
   setUser: (user: User) => void;
   clear: () => void;
 }
@@ -22,10 +26,22 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       token: null,
+      refreshToken: null,
       user: null,
-      setAuth: (token, user) => set({ token, user: normalizeUserUnicode(user) }),
+      setAuth: (token, user, refreshToken = null) =>
+        set({
+          token,
+          user: normalizeUserUnicode(user),
+          refreshToken: refreshToken ?? null,
+        }),
+      patchAccess: (token, user) =>
+        set((prev) => ({
+          token,
+          user: normalizeUserUnicode(user),
+          refreshToken: prev.refreshToken,
+        })),
       setUser: (user) => set({ user: normalizeUserUnicode(user) }),
-      clear: () => set({ token: null, user: null }),
+      clear: () => set({ token: null, refreshToken: null, user: null }),
     }),
     { name: "coldhero-auth" },
   ),

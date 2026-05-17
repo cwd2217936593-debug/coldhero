@@ -36,6 +36,22 @@ export function getTokenForChatGate(): string | null {
   return null;
 }
 
+/** persist 未完成 rehydrate 时兜底 refreshToken */
+export function getRefreshTokenForChatGate(): string | null {
+  const fromStore = useAuthStore.getState().refreshToken;
+  if (fromStore) return fromStore;
+  try {
+    const raw = localStorage.getItem("coldhero-auth");
+    if (raw) {
+      const st = JSON.parse(raw).state as { refreshToken?: string | null };
+      return typeof st.refreshToken === "string" ? st.refreshToken : null;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 /**
  * 后端根地址（无尾斜杠）。
  *
@@ -92,6 +108,7 @@ export function shouldBypassMockAdapter(
   if (pathKey === "auth/login" && m === "post") return true;
   if (pathKey === "auth/register" && m === "post") return true;
   if (pathKey === "auth/logout" && m === "post") return true;
+  if (pathKey === "auth/refresh" && m === "post") return true;
   if (pathKey === "auth/me" && m === "get") return true;
   if (pathKey === "users/me/plan" && m === "get") return true;
   if (pathKey === "users/me/quota" && m === "get") return true;

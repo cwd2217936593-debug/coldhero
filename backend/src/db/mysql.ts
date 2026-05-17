@@ -14,6 +14,8 @@ export const pool = mysql.createPool({
   user: env.MYSQL_USER,
   password: env.MYSQL_PASSWORD,
   database: env.MYSQL_DATABASE,
+  /** 未启动 MySQL 时避免长时间卡在启动期 ping（默认超时过长） */
+  connectTimeout: 10_000,
   connectionLimit: env.MYSQL_CONNECTION_LIMIT,
   waitForConnections: true,
   queueLimit: 0,

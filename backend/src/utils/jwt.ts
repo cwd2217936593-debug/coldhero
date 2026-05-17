@@ -1,13 +1,13 @@
 /**
  * JWT 签发与验证
  * --------------------------------
- * - 仅使用 HS256（密钥来自 env.JWT_SECRET）
- * - 业务侧拿到的 payload 通过 verifyToken 自动校验签名 + 过期
+ * - Access Token：HS256，`env.JWT_SECRET`，过期 `env.JWT_EXPIRES_IN`
+ * - Refresh Token：独立表 `refresh_tokens` 存 SHA-256(raw)；本文件不签 refresh
  */
 
 import jwt, { type SignOptions } from "jsonwebtoken";
 import { env } from "@/config/env";
-import type { MemberLevel } from "@/config/memberPlans";
+import { normalizeMemberLevel, type MemberLevel } from "@/config/memberPlans";
 import { UnauthorizedError } from "@/utils/errors";
 
 export interface JwtPayload {
@@ -36,7 +36,7 @@ export function verifyToken(token: string): JwtPayload {
     if (!sub || !username || !role || !memberLevel) {
       throw new UnauthorizedError("token 缺少必要字段");
     }
-    return { sub, username, role, memberLevel };
+    return { sub, username, role, memberLevel: normalizeMemberLevel(String(memberLevel)) };
   } catch (e) {
     if (e instanceof UnauthorizedError) throw e;
     throw new UnauthorizedError("token 无效或已过期");

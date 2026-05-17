@@ -13,7 +13,9 @@ function unwrapData<T>(r: { data: ApiResp<T> }, action: string): T {
 export async function login(identifier: string, password: string): Promise<AuthResult> {
   const r = await api.post<ApiResp<AuthResult>>("/auth/login", { identifier, password });
   const out = unwrapData(r, "登录");
-  if (!out.token || !out.user) throw new Error("登录响应缺少 token 或用户信息");
+  if (!out.token || !out.user || !out.refreshToken) {
+    throw new Error("登录响应缺少 token / refreshToken 或用户信息（请确认后端已实现双 Token）");
+  }
   return out;
 }
 
@@ -24,7 +26,9 @@ export async function register(input: {
 }): Promise<AuthResult> {
   const r = await api.post<ApiResp<AuthResult>>("/auth/register", input);
   const out = unwrapData(r, "注册");
-  if (!out.token || !out.user) throw new Error("注册响应缺少 token 或用户信息");
+  if (!out.token || !out.user || !out.refreshToken) {
+    throw new Error("注册响应缺少 token / refreshToken 或用户信息（请确认后端已实现双 Token）");
+  }
   return out;
 }
 
@@ -39,12 +43,13 @@ export async function getMyPlan(): Promise<MemberPlan> {
 }
 
 export async function getMyQuota(): Promise<{
-  memberLevel: string;
   aiChat: QuotaState;
   report: QuotaState;
 }> {
-  const r = await api.get<ApiResp<{ memberLevel: string; aiChat: QuotaState; report: QuotaState }>>(
+  const r = await api.get<ApiResp<{ aiChat: QuotaState; report: QuotaState }>>(
     "/users/me/quota",
   );
   return r.data.data;
 }
+
+export { logout, refreshAuthSession } from "./session";

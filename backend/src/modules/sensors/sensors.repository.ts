@@ -93,6 +93,29 @@ export const sensorsRepo = {
   },
 
   /**
+   * 时间区间内「最近」若干条（按时间升序返回，便于折线图）
+   * 解决 ASC LIMIT 取到的是窗口内最旧一段的问题。
+   */
+  async latestSeriesByZone(
+    zoneId: number,
+    fromAt: Date,
+    toAt: Date,
+    maxPoints: number,
+  ): Promise<SensorRow[]> {
+    const cap = Math.min(Math.max(maxPoints, 1), 500);
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT * FROM (
+         SELECT * FROM sensor_history
+         WHERE zone_id = ? AND recorded_at >= ? AND recorded_at <= ?
+         ORDER BY recorded_at DESC
+         LIMIT ?
+       ) t ORDER BY recorded_at ASC`,
+      [zoneId, fromAt, toAt, cap],
+    );
+    return rows as SensorRow[];
+  },
+
+  /**
    * 按时间桶聚合（AVG 温/湿/CO₂、MAX is_anomaly）
    * bucketSec=0 表示原始点（直接复用 seriesByZone 即可，本方法不处理）
    */

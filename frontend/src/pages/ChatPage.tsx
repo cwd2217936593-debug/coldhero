@@ -328,7 +328,7 @@ export default function ChatPage() {
               className="border border-slate-300 rounded px-2 py-1 bg-white text-xs"
             >
               <option value="fast">fast（极速）</option>
-              <option value="pro" disabled={!isPro}>pro（推理强 · pro/enterprise 可用）</option>
+              <option value="pro" disabled={!isPro}>pro（推理强 · 专业版/企业版可用）</option>
             </select>
           </div>
         </div>

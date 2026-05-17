@@ -4,15 +4,20 @@ import clsx from "clsx";
 import { errMessage } from "@/api/client";
 import { deleteReport, getReport, listReports, STATUS_META, submitReport, TYPE_LABEL } from "@/api/reports";
 import { listZones } from "@/api/sensors";
-import { useAuthStore } from "@/store/authStore";
 import { getMyPlan } from "@/api/auth";
 import { publicAssetUrl } from "@/lib/publicAssetUrl";
 import type { GeneratedReport, MemberPlan, ReportFormat, ReportType, Zone } from "@/api/types";
 
+const LEVEL_LABEL: Record<string, string> = {
+  free: "免费版",
+  basic: "基础版",
+  pro: "专业版",
+  enterprise: "企业版",
+};
+
 const TYPES: ReportType[] = ["daily", "weekly", "latest"];
 
 export default function ReportsPage() {
-  const user = useAuthStore((s) => s.user);
   const [plan, setPlan] = useState<MemberPlan | null>(null);
   const [zones, setZones] = useState<Zone[]>([]);
 
@@ -158,7 +163,7 @@ export default function ReportsPage() {
         {submitErr && <div className="mt-2 text-sm text-rose-600">{submitErr}</div>}
         <div className="mt-2 text-xs text-slate-500">
           {plan ? (
-            <>当日检测报告配额：<b className="text-slate-700">{plan.reportPerDay < 0 ? "不限" : plan.reportPerDay}</b> · 当前会员：<b>{user?.memberLevel}</b></>
+            <>当日检测报告配额：<b className="text-slate-700">{plan.reportPerDay < 0 ? "不限" : plan.reportPerDay}</b> · 当前会员：<b>{plan ? LEVEL_LABEL[plan.level] ?? plan.level : "—"}</b></>
           ) : "正在加载会员配额…"}
         </div>
       </div>

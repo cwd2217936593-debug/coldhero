@@ -28,6 +28,7 @@ import type {
   FaultStatus,
   GeneratedReport,
   HistoryResp,
+  MemberLevel,
   MemberPlan,
   NotificationItem,
   QuotaState,
@@ -62,14 +63,22 @@ const USERS: Record<string, { user: User; password: string }> = {
   admin:      { password: "Coldhero@123", user: makeUser(1, "admin",      "enterprise", "admin",    "系统管理员") },
   demo_free:  { password: "Coldhero@123", user: makeUser(2, "demo_free",  "free",       "viewer",   "免费用户") },
   demo_basic: { password: "Coldhero@123", user: makeUser(3, "demo_basic", "basic",      "viewer",   "基础用户") },
-  demo_pro:   { password: "Coldhero@123", user: makeUser(4, "demo_pro",   "pro",        "operator", "专业用户") },
+  demo_pro:   { password: "Coldhero@123", user: makeUser(4, "demo_pro",   "professional", "operator", "专业用户") },
   demo_ent:   { password: "Coldhero@123", user: makeUser(5, "demo_ent",   "enterprise", "operator", "企业用户") },
 };
 
 const PLANS: Record<string, MemberPlan> = {
   free:       { level: "free",       aiChatPerDay: 5,   reportPerDay: 1,  historyRangeDays: 7,   allowDocxExport: false, priorityQueue: false, apiAccess: false },
   basic:      { level: "basic",      aiChatPerDay: 30,  reportPerDay: 5,  historyRangeDays: 30,  allowDocxExport: true,  priorityQueue: false, apiAccess: false },
-  pro:        { level: "pro",        aiChatPerDay: 100, reportPerDay: 20, historyRangeDays: 365, allowDocxExport: true,  priorityQueue: true,  apiAccess: false },
+  professional: {
+    level: "professional",
+    aiChatPerDay: 100,
+    reportPerDay: 20,
+    historyRangeDays: 365,
+    allowDocxExport: true,
+    priorityQueue: true,
+    apiAccess: false,
+  },
   enterprise: { level: "enterprise", aiChatPerDay: -1,  reportPerDay: -1, historyRangeDays: -1,  allowDocxExport: true,  priorityQueue: true,  apiAccess: true  },
 };
 
@@ -135,6 +144,49 @@ let SURVEY_RESP_ID = 1;
 const startedAt = Date.now();
 seedHistory();
 
+/** Mock refresh：内存 Map，模拟 DB 仅存摘要后「换发 access」的语义（明文 refresh 仅存客户端）。 */
+const MOCK_REFRESH_SESSIONS = new Map<string, User>();
+
+/** Mock 管理端：区域与用户（内存）；纯前端演示或混合模式下未走后端的 admin 请求 */
+let MOCK_ADMIN_NEXT_USER_ID = 100_001;
+type MockAdminRegionRow = { id: number; name: string; description: string | null; createdAt: string };
+let MOCK_ADMIN_REGIONS: MockAdminRegionRow[] = [
+  { id: 1, name: "华东区", description: "演示", createdAt: new Date(startedAt).toISOString() },
+  { id: 2, name: "华北区", description: "演示", createdAt: new Date(startedAt).toISOString() },
+  { id: 3, name: "华南区", description: "演示", createdAt: new Date(startedAt).toISOString() },
+];
+type MockAdminUserListRow = {
+  id: number;
+  username: string;
+  phone: string | null;
+  role: string;
+  memberLevel: string;
+  memberLevelLabel: string;
+  regionId: number | null;
+  regionName: string | null;
+  status: string;
+  memberExpireAt: string | null;
+  bindZoneCount: number;
+  displayName: string | null;
+  zoneLimit: number;
+};
+const MOCK_ADMIN_USER_ROWS: MockAdminUserListRow[] = [];
+
+function mockMemberLevelLabel(level: string): string {
+  const m: Record<string, string> = {
+    free: "免费版",
+    basic: "基础版",
+    professional: "专业版",
+    enterprise: "企业版",
+  };
+  return m[level] ?? level;
+}
+
+function mockRegionName(id: number | null): string | null {
+  if (id == null) return null;
+  return MOCK_ADMIN_REGIONS.find((r) => r.id === id)?.name ?? null;
+}
+
 const SAMPLE_AI_ANALYSIS = `## 故障初步研判
 
 **最可能原因**
@@ -161,7 +213,7 @@ const SAMPLE_AI_ANALYSIS = `## 故障初步研判
 \`\`\`
 `;
 
-function makeUser(id: number, username: string, level: User["memberLevel"], role: User["role"], displayName: string): User {
+function makeUser(id: number, username: string, level: MemberLevel, role: User["role"], displayName: string): User {
   return {
     id, username, email: `${username}@coldhero.local`,
     memberLevel: level, displayName,
@@ -437,23 +489,34 @@ function buildSurveySummary(surveyId: number): SurveySummaryResp {
 
 function route(method: string, url: string, body: Record<string, unknown>, params: Record<string, unknown>): AxiosResponse {
   // ---- auth ----
+  if (method === "post" && url === "auth/refresh") {
+    const rt = typeof body.refreshToken === "string" ? body.refreshToken : "";
+    const u = MOCK_REFRESH_SESSIONS.get(rt);
+    if (!u) return fail(401, "UNAUTHORIZED", "refresh 无效或已过期");
+    return ok({ token: `mock.${u.id}.${Date.now()}`, user: u });
+  }
   if (method === "post" && url === "auth/login") {
     const id = String(body.identifier ?? "");
     const pwd = String(body.password ?? "");
     const u = USERS[id] ?? Object.values(USERS).find((x) => x.user.email === id);
     if (!u || u.password !== pwd) return fail(401, "UNAUTHORIZED", "用户名或密码错误");
-    return ok({ token: `mock.${u.user.id}.${Date.now()}`, user: u.user });
+    const refreshToken = uuidv4();
+    MOCK_REFRESH_SESSIONS.set(refreshToken, u.user);
+    return ok({ token: `mock.${u.user.id}.${Date.now()}`, refreshToken, user: u.user });
   }
   if (method === "get" && url === "auth/me") return ok(currentUser());
-  if (method === "post" && url === "auth/logout") return ok(null);
+  if (method === "post" && url === "auth/logout") {
+    const rt = typeof body.refreshToken === "string" ? body.refreshToken : "";
+    if (rt) MOCK_REFRESH_SESSIONS.delete(rt);
+    return ok(null);
+  }
 
   // ---- users ----
-  if (method === "get" && url === "users/me/plan") return ok(PLANS[currentUser().memberLevel]);
+  if (method === "get" && url === "users/me/plan") return ok(PLANS[currentUser().memberLevel ?? "free"]);
   if (method === "get" && url === "users/me/quota") {
-    const plan = PLANS[currentUser().memberLevel];
+    const plan = PLANS[currentUser().memberLevel ?? "free"];
     const reset = nextUtc8Midnight().toISOString();
     return ok({
-      memberLevel: currentUser().memberLevel,
       aiChat: quotaState("aiChat", QUOTA.aiChat, plan.aiChatPerDay, reset),
       report: quotaState("report", QUOTA.report, plan.reportPerDay, reset),
     });
@@ -563,7 +626,7 @@ function route(method: string, url: string, body: Record<string, unknown>, param
         "管理员 AI 冷库助理需连接真实后端（配置 VITE_API_BASE_URL + DeepSeek）。已关闭前端模拟回答。",
       );
     }
-    const plan = PLANS[currentUser().memberLevel];
+    const plan = PLANS[currentUser().memberLevel ?? "free"];
     if (plan.aiChatPerDay >= 0 && QUOTA.aiChat >= plan.aiChatPerDay) {
       return fail(429, "RATE_LIMITED", "当日 AI 问答次数已用完");
     }
@@ -856,7 +919,7 @@ function route(method: string, url: string, body: Record<string, unknown>, param
   // ---- reports (阶段 8) ----
   if (method === "post" && url === "reports") {
     const u = currentUser();
-    const userPlan = PLANS[u.memberLevel];
+    const userPlan = PLANS[u.memberLevel ?? "free"];
     if (userPlan.reportPerDay >= 0 && QUOTA.report >= userPlan.reportPerDay) {
       return fail(429, "RATE_LIMITED", "当日检测报告配额已用完");
     }
@@ -948,6 +1011,252 @@ function route(method: string, url: string, body: Record<string, unknown>, param
     if (idx < 0) return fail(404, "NOT_FOUND", "报告不存在");
     REPORTS.splice(idx, 1);
     return ok(null);
+  }
+
+  // ---- admin：区域 / 用户（Mock；否则 GET regions / POST users 会落入「mock 未实现」）----
+  if (method === "get" && url === "admin/regions") {
+    return ok([...MOCK_ADMIN_REGIONS]);
+  }
+  if (method === "post" && url === "admin/regions") {
+    const u = currentUser();
+    if (u.role !== "admin") return fail(403, "FORBIDDEN", "需要超级管理员权限");
+    const name = String((body as { name?: string }).name ?? "").trim();
+    if (!name) return fail(400, "BAD_REQUEST", "名称不能为空");
+    const nextId = MOCK_ADMIN_REGIONS.reduce((m, r) => Math.max(m, r.id), 0) + 1;
+    const desc = (body as { description?: string }).description;
+    MOCK_ADMIN_REGIONS.push({
+      id: nextId,
+      name,
+      description: typeof desc === "string" ? desc : null,
+      createdAt: new Date().toISOString(),
+    });
+    return ok({ id: nextId });
+  }
+  const regionPatchM = url.match(/^admin\/regions\/(\d+)$/);
+  if (method === "patch" && regionPatchM) {
+    const u = currentUser();
+    if (u.role !== "admin") return fail(403, "FORBIDDEN", "需要超级管理员权限");
+    const id = Number(regionPatchM[1]);
+    const r = MOCK_ADMIN_REGIONS.find((x) => x.id === id);
+    if (!r) return fail(404, "NOT_FOUND", "区域不存在");
+    const patch = body as { name?: string; description?: string | null };
+    if (patch.name !== undefined) {
+      if (!String(patch.name).trim()) return fail(400, "BAD_REQUEST", "名称不能为空");
+      r.name = patch.name.trim();
+    }
+    if (patch.description !== undefined) r.description = patch.description;
+    return ok(null);
+  }
+
+  if (method === "get" && url === "admin/users") {
+    const u = currentUser();
+    if (u.role !== "admin") return fail(403, "FORBIDDEN", "需要超级管理员权限");
+    const page = Number(params.page ?? 1);
+    const size = Number(params.size ?? 20);
+    const roleFilter = params.role as string | undefined;
+    const kw = String(params.keyword ?? "").trim().toLowerCase();
+    let rows = [...MOCK_ADMIN_USER_ROWS];
+    if (roleFilter && roleFilter !== "all") rows = rows.filter((x) => x.role === roleFilter);
+    if (kw) {
+      rows = rows.filter(
+        (x) =>
+          x.username.toLowerCase().includes(kw) ||
+          (x.phone ?? "").includes(kw) ||
+          (x.displayName ?? "").toLowerCase().includes(kw),
+      );
+    }
+    const total = rows.length;
+    const slice = rows.slice((page - 1) * size, page * size);
+    const items = slice.map((row) => ({
+      id: row.id,
+      username: row.username,
+      displayName: row.displayName,
+      phone: row.phone,
+      role: row.role,
+      memberLevel: row.memberLevel,
+      memberLevelLabel: row.memberLevelLabel,
+      regionId: row.regionId,
+      regionName: row.regionName,
+      status: row.status,
+      memberExpireAt: row.memberExpireAt,
+      bindZoneCount: row.bindZoneCount,
+      zoneLimit: row.zoneLimit,
+      lastLoginAt: null as string | null,
+      createdAt: new Date(startedAt).toISOString(),
+      createdByName: "mock",
+    }));
+    return ok({ items, total, page, size });
+  }
+
+  const adminUserNumeric = url.match(/^admin\/users\/(\d+)$/);
+  if (adminUserNumeric) {
+    const uid = Number(adminUserNumeric[1]);
+    const u = currentUser();
+    if (u.role !== "admin") return fail(403, "FORBIDDEN", "需要超级管理员权限");
+
+    if (method === "get") {
+      const row = MOCK_ADMIN_USER_ROWS.find((x) => x.id === uid);
+      if (!row) return fail(404, "NOT_FOUND", "用户不存在");
+      return ok({
+        user: {
+          id: row.id,
+          username: row.username,
+          email: `${row.username}@mock.coldhero.local`,
+          phone: row.phone,
+          displayName: row.displayName,
+          role: row.role,
+          memberLevel: row.memberLevel,
+          memberLevelLabel: row.memberLevelLabel,
+          regionId: row.regionId,
+          regionName: row.regionName,
+          status: row.status,
+          memberExpireAt: row.memberExpireAt,
+          zoneLimit: row.zoneLimit,
+          notes: null,
+          lastLoginAt: null,
+          createdAt: new Date(startedAt).toISOString(),
+          createdByName: "mock",
+        },
+        boundZones: [] as Array<{ id: number; code: string; name: string; isOnline: boolean }>,
+        levelLogs: [] as Array<{ id: number; fromLevel: string; toLevel: string; changedBy: number; reason: string | null; createdAt: string }>,
+        quotas: { aiChat: { used: 0, limit: 10 }, report: { used: 0, limit: 1 } },
+      });
+    }
+    if (method === "patch") {
+      const row = MOCK_ADMIN_USER_ROWS.find((x) => x.id === uid);
+      if (!row) return fail(404, "NOT_FOUND", "用户不存在");
+      const patch = body as Record<string, unknown>;
+      if (patch.memberExpireAt !== undefined) {
+        row.memberExpireAt =
+          patch.memberExpireAt === null || String(patch.memberExpireAt).trim() === ""
+            ? null
+            : String(patch.memberExpireAt).slice(0, 10);
+      }
+      if (patch.phone !== undefined) row.phone = patch.phone ? String(patch.phone) : null;
+      if (patch.regionId !== undefined) {
+        const rid = patch.regionId === null ? null : Number(patch.regionId);
+        row.regionId = rid !== null && Number.isFinite(rid) ? rid : null;
+        row.regionName = mockRegionName(row.regionId);
+      }
+      if (patch.remark !== undefined) {
+        const remark = String(patch.remark ?? "").trim();
+        row.displayName = remark ? `${row.username}（${remark}）` : row.username;
+      }
+      if (patch.status === "disabled") row.status = "disabled";
+      if (patch.status === "active") row.status = "active";
+      return ok({
+        id: row.id,
+        username: row.username,
+        role: row.role,
+        memberLevel: row.memberLevel,
+        status: row.status,
+      });
+    }
+    if (method === "delete") {
+      const row = MOCK_ADMIN_USER_ROWS.find((x) => x.id === uid);
+      if (!row) return fail(404, "NOT_FOUND", "用户不存在");
+      row.status = "disabled";
+      return ok({ userId: uid, status: "disabled" as const });
+    }
+  }
+
+  if (method === "get" && /^admin\/users\/\d+\/zones\/available$/.test(url)) {
+    return ok(
+      ZONES.map((z) => ({
+        id: z.id,
+        code: z.code,
+        name: z.name,
+        deviceSn: null,
+        isOnline: true,
+        customerId: null as number | null,
+      })),
+    );
+  }
+  if (method === "get" && /^admin\/users\/\d+\/zones$/.test(url)) {
+    return ok([]);
+  }
+  if (method === "post" && /^admin\/users\/\d+\/bind-zones$/.test(url)) {
+    return ok(null);
+  }
+  if (method === "post" && /^admin\/users\/\d+\/zones$/.test(url)) {
+    return ok(null);
+  }
+  if (method === "get" && /^admin\/users\/\d+\/level-logs$/.test(url)) {
+    return ok([]);
+  }
+  const adminLevelM = url.match(/^admin\/users\/(\d+)\/level$/);
+  if (method === "patch" && adminLevelM) {
+    const uid = Number(adminLevelM[1]);
+    const row = MOCK_ADMIN_USER_ROWS.find((x) => x.id === uid);
+    if (row && typeof body.memberLevel === "string") {
+      row.memberLevel = String(body.memberLevel);
+      row.memberLevelLabel = mockMemberLevelLabel(row.memberLevel);
+      if (typeof body.zoneLimit === "number") row.zoneLimit = body.zoneLimit;
+    }
+    return ok({ patched: true });
+  }
+
+  if (method === "post" && url === "admin/users") {
+    const actor = currentUser();
+    if (actor.role !== "admin") return fail(403, "FORBIDDEN", "需要超级管理员权限");
+    const username = String(body.username ?? "").trim();
+    const password = String(body.password ?? "");
+    const phone = String(body.phone ?? "").trim();
+    const realName = String(body.realName ?? "").trim();
+    const role = String(body.role ?? "customer");
+    if (!/^[a-zA-Z0-9_]{3,32}$/.test(username))
+      return fail(400, "BAD_REQUEST", "用户名格式不正确");
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(password))
+      return fail(400, "BAD_REQUEST", "密码强度不足");
+    if (!/^1[3-9]\d{9}$/.test(phone)) return fail(400, "BAD_REQUEST", "手机号格式不正确");
+    if (!realName || realName.length > 32) return fail(400, "BAD_REQUEST", "实名无效");
+    if (MOCK_ADMIN_USER_ROWS.some((x) => x.username === username))
+      return fail(400, "BAD_REQUEST", "用户名已存在");
+    const memberLevel = String(body.memberLevel ?? "free");
+    const rawRid = body.regionId;
+    const regionIdNum =
+      rawRid === undefined || rawRid === null || rawRid === "" ? null : Number(rawRid);
+    const safeRegionId = regionIdNum !== null && Number.isFinite(regionIdNum) && regionIdNum > 0 ? regionIdNum : null;
+    const zoneIds = Array.isArray(body.zoneIds)
+      ? (body.zoneIds as unknown[]).filter((x): x is number => typeof x === "number")
+      : [];
+    const id = ++MOCK_ADMIN_NEXT_USER_ID;
+    const zlim =
+      typeof body.zoneLimit === "number" && Number.isFinite(body.zoneLimit)
+        ? body.zoneLimit
+        : role === "customer"
+          ? memberLevel === "enterprise"
+            ? -1
+            : 10
+          : -1;
+    const row: MockAdminUserListRow = {
+      id,
+      username,
+      phone,
+      role,
+      memberLevel,
+      memberLevelLabel: mockMemberLevelLabel(memberLevel),
+      regionId: safeRegionId,
+      regionName: mockRegionName(safeRegionId),
+      status: "active",
+      memberExpireAt:
+        typeof body.memberExpireAt === "string" && body.memberExpireAt
+          ? body.memberExpireAt.slice(0, 10)
+          : null,
+      bindZoneCount: zoneIds.length,
+      displayName: realName,
+      zoneLimit: zlim,
+    };
+    MOCK_ADMIN_USER_ROWS.unshift(row);
+    return ok({
+      id,
+      userId: id,
+      username,
+      role,
+      memberLevel,
+      boundZones: zoneIds.length,
+      tempPassword: password,
+    });
   }
 
   return fail(404, "NOT_FOUND", `mock 未实现：${method.toUpperCase()} /api/${url}`);
@@ -1119,7 +1428,7 @@ function nextUtc8Midnight(): Date {
 
 function resolveHistoryRange(params: Record<string, unknown>) {
   const user = currentUser();
-  const plan = PLANS[user.memberLevel];
+  const plan = PLANS[user.memberLevel ?? "free"];
   const now = Date.now();
   const allowedMs = plan.historyRangeDays < 0 ? Infinity : plan.historyRangeDays * 86400 * 1000;
   const earliest = plan.historyRangeDays < 0 ? new Date(0) : new Date(now - allowedMs);
@@ -1258,7 +1567,7 @@ function mockStream(init?: RequestInit): Response {
   const sid = body.sessionId ?? uuidv4();
   const q = String(body.question ?? "");
 
-  const plan = PLANS[currentUser().memberLevel];
+  const plan = PLANS[currentUser().memberLevel ?? "free"];
   if (plan.aiChatPerDay >= 0 && QUOTA.aiChat >= plan.aiChatPerDay) {
     return new Response(JSON.stringify({ success: false, message: "当日 AI 问答次数已用完" }), { status: 429 });
   }

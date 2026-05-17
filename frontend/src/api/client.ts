@@ -1,5 +1,6 @@
 import axios, { AxiosError } from "axios";
-import { getTokenForChatGate } from "@/lib/deepseekBridge";
+import { axiosPathKey, getRefreshTokenForChatGate, getTokenForChatGate } from "@/lib/deepseekBridge";
+import { refreshAuthSession } from "@/api/session";
 import { useAuthStore } from "@/store/authStore";
 import type { ApiResp } from "@/api/types";
 
@@ -15,14 +16,55 @@ api.interceptors.request.use((cfg) => {
   return cfg;
 });
 
-// 401 → 自动登出回登录页；429 弹升级提示
+/** 聚合并发 401→避免重复 refresh */
+let refreshFlight: Promise<void> | null = null;
+
 api.interceptors.response.use(
   (res) => res,
-  (err: AxiosError<ApiResp<never>>) => {
-    if (err.response?.status === 401) {
+  async (err: AxiosError<ApiResp<never>>) => {
+    const status = err.response?.status;
+    const cfg = err.config;
+    if (status !== 401 || !cfg) return Promise.reject(err);
+
+    const pathKey = axiosPathKey(cfg);
+    if (
+      pathKey.startsWith("auth/login") ||
+      pathKey.startsWith("auth/register") ||
+      pathKey.startsWith("auth/refresh")
+    ) {
       useAuthStore.getState().clear();
+      return Promise.reject(err);
     }
-    return Promise.reject(err);
+
+    const rt = useAuthStore.getState().refreshToken ?? getRefreshTokenForChatGate();
+    const retried = Boolean((cfg as { _retry401?: boolean })._retry401);
+    if (!rt || retried) {
+      useAuthStore.getState().clear();
+      return Promise.reject(err);
+    }
+
+    (cfg as { _retry401?: boolean })._retry401 = true;
+
+    try {
+      refreshFlight ??= (async () => {
+        try {
+          const { token, user } = await refreshAuthSession(rt);
+          useAuthStore.getState().patchAccess(token, user);
+        } finally {
+          refreshFlight = null;
+        }
+      })();
+      await refreshFlight;
+
+      cfg.headers = cfg.headers ?? {};
+      const nextTok = useAuthStore.getState().token;
+      if (!nextTok) throw new Error("no token after refresh");
+      cfg.headers.Authorization = `Bearer ${nextTok}`;
+      return api.request(cfg);
+    } catch {
+      useAuthStore.getState().clear();
+      return Promise.reject(err);
+    }
   },
 );
 

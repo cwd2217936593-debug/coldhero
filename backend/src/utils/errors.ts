@@ -48,3 +48,15 @@ export class TooManyRequestsError extends AppError {
     super(message, { status: 429, code: "RATE_LIMITED", details });
   }
 }
+
+export class ConflictError extends AppError {
+  constructor(message = "资源冲突", details?: unknown) {
+    super(message, { status: 409, code: "CONFLICT", details });
+  }
+}
+
+export class UnprocessableEntityError extends AppError {
+  constructor(message: string, code = "UNPROCESSABLE_ENTITY", details?: unknown) {
+    super(message, { status: 422, code, details });
+  }
+}

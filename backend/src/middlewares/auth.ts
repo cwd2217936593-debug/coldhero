@@ -8,10 +8,11 @@
  */
 
 import type { NextFunction, Request, RequestHandler, Response } from "express";
-import { ForbiddenError, UnauthorizedError } from "@/utils/errors";
+import { ForbiddenError, UnauthorizedError, AppError } from "@/utils/errors";
 import { verifyToken } from "@/utils/jwt";
 import { getPlan, type MemberPlan } from "@/config/memberPlans";
 import type { UserRole } from "@/modules/users/users.repository";
+import { redis } from "@/db/redis";
 
 function extractToken(req: Request): string | null {
   const header = req.headers.authorization;
@@ -22,12 +23,20 @@ function extractToken(req: Request): string | null {
   return null;
 }
 
-export const requireAuth: RequestHandler = (req, _res, next) => {
+export const requireAuth: RequestHandler = async (req, _res, next) => {
   const token = extractToken(req);
   if (!token) throw new UnauthorizedError("缺少访问令牌");
   const payload = verifyToken(token);
+  const uid = Number(payload.sub);
+  const bl = await redis.get(`blacklist:${uid}`);
+  if (bl) {
+    throw new AppError("账号已被禁用，请联系管理员", {
+      status: 401,
+      code: "TOKEN_REVOKED",
+    });
+  }
   req.user = {
-    id: Number(payload.sub),
+    id: uid,
     username: payload.username,
     role: payload.role,
     memberLevel: payload.memberLevel,

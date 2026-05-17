@@ -5,15 +5,18 @@ export interface ApiResp<T> {
   code?: string;
   message?: string;
   details?: unknown;
+  /** 业务提示（如禁用账号关联工单） */
+  warning?: string;
 }
 
-export type MemberLevel = "free" | "basic" | "pro" | "enterprise";
+export type MemberLevel = "free" | "basic" | "professional" | "enterprise";
 
 export interface User {
   id: number;
   username: string;
   email: string;
-  memberLevel: MemberLevel;
+  /** 客户端接口不再下发；以 /users/me/plan 的 level 为准 */
+  memberLevel?: MemberLevel;
   displayName: string | null;
   avatarUrl: string | null;
   role: "admin" | "operator" | "viewer";
@@ -24,6 +27,8 @@ export interface User {
 
 export interface AuthResult {
   token: string;
+  /** 与服务端 JWT_REFRESH 对齐；兼容旧会话可能缺失 */
+  refreshToken?: string;
   user: User;
 }
 

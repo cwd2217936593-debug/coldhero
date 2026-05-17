@@ -2,7 +2,8 @@
  * 配额服务（Redis 主存储 + MySQL 兜底）
  * --------------------------------
  * Key 规范：quota:{userId}:{YYYY-MM-DD}:{type}（与产品文档一致）
- * 一切"日"按 UTC+8 切分。
+ * 一切"日"按 UTC+8 切分；跨日「重置」不靠人工删 Redis，而是由 **自然日换新 KEY +
+ * KEYS 附带 TTL→次日零点自动过期**。`quotaDayRollover` 任务在每 UTC+8 刚过零点打钩子（日志/扩展点）。
  *
  * 核心方法：
  *   - peek(userId, plan, type)              不消费，仅查询当前余额
@@ -32,6 +33,26 @@ function buildKey(userId: number, date: string, type: QuotaType): string {
 }
 
 /**
+ * Redis MISS 时用 MySQL 当日行回填（机房丢缓存 / flush 后继续接近真实使用量）。
+ */
+async function hydrateFromMysqlIfMissing(
+  userId: number,
+  date: string,
+  type: QuotaType,
+  ttlSeconds: number,
+): Promise<void> {
+  const key = buildKey(userId, date, type);
+  const raw = await redis.get(key);
+  if (raw !== null) return;
+  const row = await quotaRepo.getByUserDate(userId, date);
+  if (!row) return;
+  const usedRaw = type === "aiChat" ? row.ai_chat_used : row.report_used;
+  const used = Number(usedRaw);
+  if (!Number.isFinite(used) || used <= 0) return;
+  await redis.set(key, String(used), "EX", ttlSeconds);
+}
+
+/**
  * Lua 脚本：原子 check-and-incr
  *
  * KEYS[1]   计数键
@@ -57,8 +78,11 @@ return {1, newval}
 export const quotaService = {
   /** 仅查询当前余额，不做消费 */
   async peek(userId: number, plan: MemberPlan, type: QuotaType): Promise<QuotaCheckResult> {
-    const date = getUtc8DateString();
+    const now = new Date();
+    const date = getUtc8DateString(now);
     const limit = getLimit(plan, type);
+    const ttl = secondsToNextUtc8Midnight(now);
+    await hydrateFromMysqlIfMissing(userId, date, type, ttl);
     const key = buildKey(userId, date, type);
     const raw = await redis.get(key);
     const used = raw ? parseInt(raw, 10) : 0;
@@ -75,6 +99,7 @@ export const quotaService = {
     const date = getUtc8DateString(now);
     const limit = getLimit(plan, type);
     const ttl = secondsToNextUtc8Midnight(now);
+    await hydrateFromMysqlIfMissing(userId, date, type, ttl);
     const key = buildKey(userId, date, type);
 
     const reply = (await redis.eval(

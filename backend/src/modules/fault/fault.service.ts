@@ -9,6 +9,7 @@
 import { faultRepo } from "@/modules/fault/fault.repository";
 import { faultAi } from "@/modules/fault/fault.ai";
 import { notificationsRepo } from "@/modules/notifications/notifications.repository";
+import { runFaultDispatch } from "@/services/dispatchEngine";
 import { ForbiddenError, NotFoundError } from "@/utils/errors";
 import { logger } from "@/utils/logger";
 import type { AuthUser } from "@/types/express";
@@ -36,6 +37,12 @@ export const faultService = {
       severity: dto.severity ?? "medium",
     });
     const report = await faultRepo.findById(id);
+
+    /**
+     * 提示词 Step 5：`fault_reports` 落库成功后异步触发自动派单引擎（不阻塞响应、不冒泡错误）。
+     * 实现见 `services/dispatchEngine.ts`。
+     */
+    void runFaultDispatch({ faultId: id, customerUserId: user.id });
 
     // 异步 AI 分析（不阻塞响应；失败仅记录日志）
     void (async () => {

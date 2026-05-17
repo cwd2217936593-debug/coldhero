@@ -32,6 +32,17 @@ export const loginSchema = z.object({
   password: z.string().min(1, "请输入密码").max(64),
 });
 
+export const refreshSchema = z.object({
+  refreshToken: z.string().min(40, "refreshToken 无效"),
+});
+
+/** 注销：可不传 refreshToken（则吊销该用户在库内全部 refresh）；传则仅吊销当前会话 */
+export const logoutBodySchema = z
+  .object({
+    refreshToken: z.string().min(40).optional(),
+  })
+  .strict();
+
 export const changePasswordSchema = z
   .object({
     oldPassword: z.string().min(1, "请输入原密码"),
@@ -48,10 +59,11 @@ export const changePasswordSchema = z
   });
 
 export const upgradeMemberSchema = z.object({
-  memberLevel: z.enum(["free", "basic", "pro", "enterprise"]),
+  memberLevel: z.enum(["free", "basic", "professional", "enterprise"]),
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+export type RefreshInput = z.infer<typeof refreshSchema>;
 export type UpgradeMemberInput = z.infer<typeof upgradeMemberSchema>;

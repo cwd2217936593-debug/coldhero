@@ -52,7 +52,7 @@ export function getReportQueue(): Queue<ReportJobData> {
 const PRIORITY: Record<MemberLevel, number> = {
   free: 12,
   basic: 8,
-  pro: 3,
+  professional: 3,
   enterprise: 1,
 };
 

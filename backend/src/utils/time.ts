@@ -34,3 +34,16 @@ export function secondsToNextUtc8Midnight(d: Date = new Date()): number {
   const ms = nextUtc8Midnight(d).getTime() - d.getTime();
   return Math.max(1, Math.ceil(ms / 1000));
 }
+
+/**
+ * 约在下一 UTC+8 零点过 `afterMidnightMs`（默认 3.5s）触发一次钩子用的 sleep 毫秒数。
+ * （Step 3 配额日切调度；时钟异常时兜底封顶 7 日内再排期。）
+ */
+export function computeMsUntilNextQuotaRollover(
+  now = Date.now(),
+  afterMidnightMs = 3500,
+): number {
+  const next = nextUtc8Midnight(new Date(now)).getTime();
+  const raw = next - now + afterMidnightMs;
+  return Math.min(Math.max(raw, 2000), 7 * 24 * 60 * 60 * 1000);
+}
