@@ -10,7 +10,7 @@
 import type { User } from "@/api/types";
 import { useAuthStore } from "@/store/authStore";
 
-/** 与 mock 的 currentUserFromStore 一致：避免 persist 尚未 rehydrate 时 user 为 null，误判不能走 DeepSeek */
+/** 与 mock 从 localStorage 读用户一致：避免 persist 尚未 rehydrate 时 user 为 null，误判不能走 DeepSeek */
 export function getUserForChatGate(): User | null {
   const fromStore = useAuthStore.getState().user;
   if (fromStore) return fromStore;

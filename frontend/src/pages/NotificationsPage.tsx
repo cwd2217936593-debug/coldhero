@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import dayjs from "dayjs";
 import clsx from "clsx";
 import { listNotifications, markAllRead, markRead } from "@/api/notifications";
@@ -15,12 +15,14 @@ export default function NotificationsPage() {
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [items, setItems] = useState<NotificationItem[]>([]);
 
-  async function load() {
+  const load = useCallback(async () => {
     const list = await listNotifications(unreadOnly);
     setItems(list);
-  }
+  }, [unreadOnly]);
 
-  useEffect(() => { load(); }, [unreadOnly]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   async function markOne(id: number) {
     await markRead([id]);

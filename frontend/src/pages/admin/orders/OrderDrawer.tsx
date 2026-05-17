@@ -58,7 +58,7 @@ export default function OrderDrawer({
     if (order) setNote(order.resultNote ?? "");
     setFlowErr(null);
     setNoteErr(null);
-  }, [order?.id, order?.resultNote]);
+  }, [order]);
 
   if (!open || !order) return null;
 

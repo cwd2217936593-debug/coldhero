@@ -21,6 +21,7 @@ const POLL_MS = 60_000;
 
 export default function HistoryPage() {
   const [params, setParams] = useSearchParams();
+  const zoneIdParam = params.get("zoneId");
   const [zones, setZones] = useState<Zone[]>([]);
   const [zoneId, setZoneId] = useState<number | null>(null);
   const [hours, setHours] = useState(24);
@@ -43,10 +44,10 @@ export default function HistoryPage() {
   useEffect(() => {
     listZones().then((zs) => {
       setZones(zs);
-      const initial = Number(params.get("zoneId")) || zs[0]?.id || null;
+      const initial = Number(zoneIdParam) || zs[0]?.id || null;
       setZoneId(initial);
     });
-  }, []);
+  }, [zoneIdParam]);
 
   const loadCompare = useCallback(
     async (mode: "full" | "quiet") => {

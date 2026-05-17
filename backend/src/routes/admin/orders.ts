@@ -16,7 +16,6 @@ import { pool } from "@/db/mysql";
 import {
   technicianStatusRepo,
   workOrdersRepo,
-  type WorkOrderStatus,
 } from "@/modules/workOrders/workOrders.repository";
 import { faultRepo } from "@/modules/fault/fault.repository";
 import { usersRepo } from "@/modules/users/users.repository";

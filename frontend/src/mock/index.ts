@@ -13,6 +13,7 @@ import { api } from "@/api/client";
 import {
   applyExternalApiBaseUrl,
   getUserForChatGate,
+  isHybridMockWithBackend,
   relayApiViaViteProxyInDev,
   shouldBypassMockAdapter,
   shouldChatStreamHitRealBackend,
@@ -150,7 +151,7 @@ const MOCK_REFRESH_SESSIONS = new Map<string, User>();
 /** Mock 管理端：区域与用户（内存）；纯前端演示或混合模式下未走后端的 admin 请求 */
 let MOCK_ADMIN_NEXT_USER_ID = 100_001;
 type MockAdminRegionRow = { id: number; name: string; description: string | null; createdAt: string };
-let MOCK_ADMIN_REGIONS: MockAdminRegionRow[] = [
+const MOCK_ADMIN_REGIONS: MockAdminRegionRow[] = [
   { id: 1, name: "华东区", description: "演示", createdAt: new Date(startedAt).toISOString() },
   { id: 2, name: "华北区", description: "演示", createdAt: new Date(startedAt).toISOString() },
   { id: 3, name: "华南区", description: "演示", createdAt: new Date(startedAt).toISOString() },
@@ -383,14 +384,6 @@ function fail(status: number, code: string, message: string): AxiosResponse<ApiR
     data: { success: false, code, message } as unknown as ApiResp<never>,
     status, statusText: code, headers: {}, config: {} as InternalAxiosRequestConfig,
   };
-}
-
-function currentUserFromStore(): User | null {
-  try {
-    const raw = localStorage.getItem("coldhero-auth");
-    if (raw) return JSON.parse(raw).state.user as User;
-  } catch { /* ignore */ }
-  return null;
 }
 
 async function fakeRequest(cfg: AxiosRequestConfig): Promise<InternalAxiosRequestConfig> {
@@ -1352,7 +1345,6 @@ function makeMockTextDataUrl(filename: string, mime: string, content: ReportCont
   const text = renderMockReportText(filename, content);
   // 用 base64 编码 UTF-8 字符串
   const utf8 = unescape(encodeURIComponent(text));
-  // eslint-disable-next-line @typescript-eslint/no-deprecated
   const b64 = btoa(utf8);
   return `data:${mime};charset=utf-8;base64,${b64}`;
 }
@@ -1530,9 +1522,73 @@ function mockAnswer(q: string): string {
 // Mock SSE 流式（拦截 fetch）
 // =============================================================
 
+function apiSubpathFromFetchUrl(urlStr: string): string | null {
+  try {
+    const u = new URL(urlStr, window.location.origin);
+    const pathname = (u.pathname.replace(/\/+$/, "") || "/").replace(/^\/+/, "/");
+    if (!pathname.startsWith("/api/")) return null;
+    return pathname.slice("/api/".length).replace(/^\/+/, "");
+  } catch {
+    return null;
+  }
+}
+
+function fetchMethod(input: RequestInfo | URL, init?: RequestInit): string {
+  const m = init?.method ?? (typeof input !== "string" && !(input instanceof URL) ? input.method : "GET");
+  return m.toUpperCase();
+}
+
+/** 纯 Mock：`session.ts` 用 fetch，须与上方 axios `route` 中 auth 语义一致 */
+function tryMockAuthFetchResponse(urlStr: string, method: string, init?: RequestInit): Response | null {
+  const sub = apiSubpathFromFetchUrl(urlStr);
+  if (!sub || method !== "POST") return null;
+  if (sub !== "auth/refresh" && sub !== "auth/logout") return null;
+
+  const rawBody = init?.body;
+  let text = "{}";
+  if (typeof rawBody === "string") text = rawBody;
+  else if (rawBody === undefined || rawBody === null) text = "{}";
+  else return null;
+
+  let body: Record<string, unknown> = {};
+  try {
+    body = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+  } catch {
+    body = {};
+  }
+
+  if (sub === "auth/refresh") {
+    const rt = typeof body.refreshToken === "string" ? body.refreshToken : "";
+    const u = MOCK_REFRESH_SESSIONS.get(rt);
+    if (!u) {
+      return new Response(JSON.stringify({ success: false, code: "UNAUTHORIZED", message: "refresh 无效或已过期" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+      });
+    }
+    return new Response(JSON.stringify({ success: true, data: { token: `mock.${u.id}.${Date.now()}`, user: u } }), {
+      status: 200,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    });
+  }
+
+  const rt = typeof body.refreshToken === "string" ? body.refreshToken : "";
+  if (rt) MOCK_REFRESH_SESSIONS.delete(rt);
+  return new Response(JSON.stringify({ success: true }), {
+    status: 200,
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+  });
+}
+
 const realFetch = window.fetch.bind(window);
 window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+  const method = fetchMethod(input, init);
+  if (!isHybridMockWithBackend()) {
+    const mockedAuth = tryMockAuthFetchResponse(url, method, init);
+    if (mockedAuth) return mockedAuth;
+  }
+
   const isChatStream =
     url.includes("/chat/messages/stream") || url.includes("/api/chat/messages/stream");
   if (isChatStream && shouldChatStreamHitRealBackend()) {
@@ -1606,7 +1662,7 @@ function mockStream(init?: RequestInit): Response {
 // Mock WebSocket
 // =============================================================
 
-const RealWebSocket = window.WebSocket;
+type NativeWebSocket = typeof window.WebSocket;
 
 class MockWebSocket extends EventTarget {
   static CONNECTING = 0; static OPEN = 1; static CLOSING = 2; static CLOSED = 3;
@@ -1643,7 +1699,8 @@ class MockWebSocket extends EventTarget {
   ping?(): void { /* noop */ }
 }
 
-(window as unknown as { WebSocket: typeof RealWebSocket }).WebSocket = MockWebSocket as unknown as typeof RealWebSocket;
+(window as unknown as { WebSocket: NativeWebSocket }).WebSocket =
+  MockWebSocket as unknown as NativeWebSocket;
 
 // 运行标识
 console.info(

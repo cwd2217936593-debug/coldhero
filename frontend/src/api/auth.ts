@@ -39,7 +39,7 @@ export async function getMe(): Promise<User> {
 
 export async function getMyPlan(): Promise<MemberPlan> {
   const r = await api.get<ApiResp<MemberPlan>>("/users/me/plan");
-  return r.data.data;
+  return unwrapData(r, "获取会员方案");
 }
 
 export async function getMyQuota(): Promise<{
@@ -49,7 +49,7 @@ export async function getMyQuota(): Promise<{
   const r = await api.get<ApiResp<{ aiChat: QuotaState; report: QuotaState }>>(
     "/users/me/quota",
   );
-  return r.data.data;
+  return unwrapData(r, "获取配额");
 }
 
 export { logout, refreshAuthSession } from "./session";

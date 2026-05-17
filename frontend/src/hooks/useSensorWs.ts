@@ -93,5 +93,5 @@ export function useSensorWs(opts: Options) {
       if (timer) window.clearTimeout(timer);
       ws?.close();
     };
-  }, [token, JSON.stringify(zoneIds)]);
+  }, [token, zoneIds]);
 }
